@@ -999,38 +999,33 @@ h3 {
   inset: 0;
 }
 
+/* The jaws live in a wrapper that turns to face the swing, so they always
+   close along the direction the finger travelled. */
+.squish__jaws {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  transform-origin: center;
+}
+
 .jaw {
   position: absolute;
-  left: 0;
-  right: 0;
+  /* Wider than the stage so the ends never rotate into view. */
+  left: -40%;
+  width: 180%;
+  top: 50%;
+  margin-top: -13px;
   height: 26px;
   background: linear-gradient(var(--text-dim), #5b5570);
-  z-index: 2;
-  transition: transform 0.05s linear;
+  border-radius: 3px;
 }
 
 .jaw__teeth {
   height: 100%;
-  background: repeating-linear-gradient(
-    90deg,
-    rgba(0, 0, 0, 0.35) 0 6px,
-    transparent 6px 14px
-  );
+  background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.35) 0 6px, transparent 6px 14px);
 }
 
-.squish__spin {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  max-width: 420px;
-  font-size: 0.8rem;
-}
-
-.squish__spin input {
-  width: 100%;
-  height: 44px;
-}
 
 /* ---------- slice tool ---------- */
 

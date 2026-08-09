@@ -3,23 +3,36 @@ import { useRef, useState } from 'react'
 import type { Placed, Squash } from '../../shared/scene'
 import { capturePointer } from '../pointer'
 import { mergeSquash } from '../sceneEdit'
+import { crushAngle, squeezeFactor } from '../squish'
 import { PiecePreview, ToolShell } from './ToolShell'
 
-const STAGE = 260
-/** How far apart the jaws start, as a fraction of the stage. */
-const OPEN_GAP = 0.9
-const CLOSED_GAP = 0.12
-
-/**
- * One squeeze deliberately does little: a gentle full close is 1.2×, a hard
- * slam 1.7×. Extreme shapes come from hitting it again and again, which is
- * what makes it a crusher rather than a slider — and repeated squeezes at the
- * same aim merge into a single crush, so hammering it costs nothing.
- */
-const GENTLE_SQUEEZE = 0.2
-const SPEED_BONUS = 0.5
+const STAGE = 280
+const CENTRE = STAGE / 2
+/** Jaws never quite meet — a fully flattened preview would show nothing. */
+const CLOSED_RADIUS = 18
+/** Where the jaws rest before you touch anything. */
+const OPEN_RADIUS = STAGE * 0.46
+/** A press this close to the middle gives no swing direction to read. */
+const MIN_START_RADIUS = 30
+/** Distance that counts as a full swing. */
+const FULL_SWING = STAGE * 0.34
 const SPEED_REFERENCE = 900 // px/sec that counts as a hard slam
 
+interface Swing {
+  /** Direction from the art's centre to where the finger went down. */
+  angle: number
+  /** Distance from centre, along that axis. */
+  radius: number
+  time: number
+  peakSpeed: number
+  startRadius: number
+}
+
+/**
+ * The crusher. The jaws come from wherever you put your finger and close along
+ * the path you drag — so aiming and squeezing are one motion instead of a
+ * slider plus a drag.
+ */
 export function SquishTool({
   piece,
   onCommit,
@@ -29,23 +42,26 @@ export function SquishTool({
   onCommit(squashes: Squash[]): void
   onCancel(): void
 }) {
-  /** How far the art is spun on screen, to aim it at the jaws. */
-  const [angle, setAngle] = useState(0)
-  const [gap, setGap] = useState(OPEN_GAP)
   /** Squeezes so far in this visit, previewed live and committed together. */
   const [pending, setPending] = useState<Squash[]>([])
+  /** Where the jaws currently sit. Null means resting. */
+  const [jaws, setJaws] = useState<{ angle: number; radius: number } | null>(null)
 
-  const drag = useRef<{ y: number; time: number; peakSpeed: number } | null>(null)
-
+  const swing = useRef<Swing | null>(null)
   const total = pending.reduce((most, squash) => Math.max(most, squash.factor), 1)
+
+  const pointOf = (event: React.PointerEvent<HTMLDivElement>): { x: number; y: number } => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    return { x: event.clientX - rect.left - CENTRE, y: event.clientY - rect.top - CENTRE }
+  }
 
   return (
     <ToolShell
       title="Squish"
       hint={
         pending.length > 0
-          ? `Crushed ${total.toFixed(1)}×. Keep squeezing to flatten it more.`
-          : 'Spin the art to aim, then drag the jaws together. Squeeze again and again.'
+          ? `Crushed ${total.toFixed(1)}×. Swing again to flatten it more.`
+          : 'Swipe through the art from any side. The jaws close the way you swing.'
       }
       onCancel={onCancel}
       onDone={() => (pending.length > 0 ? onCommit(pending) : onCancel())}
@@ -56,77 +72,75 @@ export function SquishTool({
           className="squish__stage"
           style={{ width: STAGE, height: STAGE }}
           onPointerDown={(event) => {
-            drag.current = { y: event.clientY, time: performance.now(), peakSpeed: 0 }
+            const p = pointOf(event)
+            const radius = Math.hypot(p.x, p.y)
+            // Starting on top of the art gives no direction to swing from.
+            if (radius < MIN_START_RADIUS) return
+
+            const angle = Math.atan2(p.y, p.x)
+            swing.current = {
+              angle,
+              radius,
+              startRadius: radius,
+              time: performance.now(),
+              peakSpeed: 0,
+            }
+            setJaws({ angle, radius })
             capturePointer(event)
           }}
           onPointerMove={(event) => {
-            const state = drag.current
+            const state = swing.current
             if (!state) return
+
+            // Track only movement along the swing's own axis, so a wobble
+            // sideways neither closes the jaws nor counts as speed.
+            const p = pointOf(event)
+            const along = p.x * Math.cos(state.angle) + p.y * Math.sin(state.angle)
+            const radius = Math.max(CLOSED_RADIUS, along)
 
             const now = performance.now()
-            const dy = event.clientY - state.y
             const dt = Math.max(1, now - state.time)
-            const speed = (Math.abs(dy) / dt) * 1000
-
-            state.y = event.clientY
+            state.peakSpeed = Math.max(
+              state.peakSpeed,
+              (Math.abs(radius - state.radius) / dt) * 1000,
+            )
+            state.radius = radius
             state.time = now
-            state.peakSpeed = Math.max(state.peakSpeed, speed)
 
-            setGap((current) => {
-              // Dragging down from the top jaw closes the gap.
-              const next = current - (dy * 2) / STAGE
-              return Math.max(CLOSED_GAP, Math.min(OPEN_GAP, next))
-            })
+            setJaws({ angle: state.angle, radius })
           }}
           onPointerUp={() => {
-            const state = drag.current
-            drag.current = null
+            const state = swing.current
+            swing.current = null
+            setJaws(null)
             if (!state) return
 
-            const closed = (OPEN_GAP - gap) / (OPEN_GAP - CLOSED_GAP)
-            // A nudge is not a squeeze; let the jaws spring back.
-            if (closed < 0.08) {
-              setGap(OPEN_GAP)
-              return
-            }
+            const travel = state.startRadius - state.radius
+            // A nudge is not a squeeze.
+            if (travel < 12) return
 
-            const speedFraction = Math.min(state.peakSpeed / SPEED_REFERENCE, 1)
-            const factor = 1 + closed * (GENTLE_SQUEEZE + speedFraction * SPEED_BONUS)
-
+            const factor = squeezeFactor(travel / FULL_SWING, state.peakSpeed / SPEED_REFERENCE)
             setPending((current) => {
-              // The jaws crush vertically on screen. The art is spun by `angle`
-              // to aim, so in the piece's own frame that direction is turned
-              // the other way — otherwise the crush lands mirrored.
-              const merged = mergeSquash(current, { angle: -angle, factor })
+              const merged = mergeSquash(current, {
+                angle: crushAngle(state.angle, piece.rotation),
+                factor,
+              })
               return merged ?? current
             })
-            setGap(OPEN_GAP)
+          }}
+          onPointerCancel={() => {
+            swing.current = null
+            setJaws(null)
           }}
         >
-          <Jaw position="top" gap={gap} stage={STAGE} />
           <div className="squish__art">
-            <PiecePreview
-              piece={piece}
-              size={STAGE}
-              rotation={angle}
-              // Show everything squeezed so far, live.
-              extraSquashes={pending}
-            />
+            {/* Drawn at the piece's own angle — the jaws move around it now,
+                rather than the art spinning to meet them. */}
+            <PiecePreview piece={piece} size={STAGE} extraSquashes={pending} />
           </div>
-          <Jaw position="bottom" gap={gap} stage={STAGE} />
-        </div>
 
-        <label className="squish__spin">
-          <span className="muted">Spin to aim</span>
-          <input
-            type="range"
-            min={-180}
-            max={180}
-            step={5}
-            value={Math.round((angle * 180) / Math.PI)}
-            onChange={(event) => setAngle((Number(event.target.value) * Math.PI) / 180)}
-          />
-        </label>
+          <Jaws angle={jaws?.angle ?? -Math.PI / 2} radius={jaws?.radius ?? OPEN_RADIUS} />
+        </div>
 
         {pending.length > 0 && (
           <button type="button" className="btn btn--ghost" onClick={() => setPending([])}>
@@ -138,14 +152,22 @@ export function SquishTool({
   )
 }
 
-function Jaw({ position, gap, stage }: { position: 'top' | 'bottom'; gap: number; stage: number }) {
-  const offset = ((1 - gap) / 2) * stage
+/**
+ * Two linked plates facing each other across the art. The wrapper turns so its
+ * vertical axis lines up with the swing, which puts one jaw under the finger
+ * and the other directly opposite.
+ */
+function Jaws({ angle, radius }: { angle: number; radius: number }) {
+  const degrees = (angle * 180) / Math.PI - 90
+
   return (
-    <div
-      className={`jaw jaw--${position}`}
-      style={{ [position]: 0, transform: `translateY(${position === 'top' ? offset : -offset}px)` }}
-    >
-      <div className="jaw__teeth" />
+    <div className="squish__jaws" style={{ transform: `rotate(${degrees}deg)` }}>
+      <div className="jaw" style={{ transform: `translateY(${radius}px)` }}>
+        <div className="jaw__teeth" />
+      </div>
+      <div className="jaw" style={{ transform: `translateY(${-radius}px)` }}>
+        <div className="jaw__teeth" />
+      </div>
     </div>
   )
 }

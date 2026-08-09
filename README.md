@@ -6,9 +6,9 @@ something that vaguely resembles it. Then everyone votes on whose attempt was
 best.
 
 The tools are physical rather than abstract: you **mix paint** by squeezing
-tubes into a jar and holding a spray button, **squish** a part by aiming it and
-slamming crusher jaws shut, and **slice** it by tossing it in the air and
-flicking your finger through it.
+tubes into a jar and holding a spray button, **squish** a part by swiping
+through it so crusher jaws close along your swing, and **slice** it by tossing
+it in the air and flicking your finger through it.
 
 **Play:** https://erictams.github.io/ArtSlicer/
 
@@ -109,7 +109,14 @@ own frame, rendered by conjugating a scale by that angle, and successive squashe
 compose by nesting. Angle 0 crushes vertically — a convention pinned down by
 tests, because getting it backwards silently mirrors the deformation.
 
-One squeeze does little on purpose — a hard slam is about 1.7× — so extreme
+The jaws follow your finger: they appear wherever you press, turn to face the
+centre, and close along the path you swipe — so aiming and squeezing are one
+motion. Converting that swing into a stored angle has to account for both the
+quarter-turn convention and the piece's own rotation, and a sign error there is
+invisible on a symmetric piece, so `crushAngle` is isolated and tested against
+the rendered deformation.
+
+One squeeze does little on purpose — a hard swing is about 1.7× — so extreme
 shapes come from hitting it repeatedly. Squeezes aimed the same way merge into a
 single crush by multiplying their factors, so hammering the jaws costs no extra
 nesting and only distinct axes count against the per-piece limit.
