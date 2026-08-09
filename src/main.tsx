@@ -1,0 +1,25 @@
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+
+import { ClientApp } from './client/ClientApp'
+import { HostApp } from './host/HostApp'
+import './styles.css'
+
+const root = document.getElementById('root')
+if (!root) throw new Error('#root missing from index.html')
+
+createRoot(root).render(
+  <StrictMode>
+    {/* Hash routing: GitHub Pages has no rewrite rules, so a deep link like
+        /ArtSlicer/join/ABCD would 404. #/join/ABCD always resolves. */}
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<HostApp />} />
+        <Route path="/join/:code" element={<ClientApp />} />
+        <Route path="/join" element={<ClientApp />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </HashRouter>
+  </StrictMode>,
+)
