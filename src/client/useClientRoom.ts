@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { createPeerClient } from '../net/peerClient'
-import { type ClientTransport, describeFailure } from '../net/transport'
+import { type ClientTransport, type ConnectFn, describeFailure } from '../net/transport'
 import { type BallotEntry, PROTOCOL_VERSION, type RevealedEntry } from '../shared/protocol'
 import type { Phase, PlayerId, PublicPlayer } from '../shared/gameState'
 import type { Scene } from '../shared/scene'
@@ -44,7 +43,13 @@ export interface ClientRoom {
 
 const PING_INTERVAL_MS = 3000
 
-export function useClientRoom(roomCode: string, identity: Identity): ClientRoom {
+/**
+ * Drives one player's view of the room. Takes a `connect` function rather than
+ * a room code so the same hook serves both a remote phone (WebRTC) and the
+ * player hosting on this device (in-process loopback). `connect` must be
+ * stable — a new identity would tear down and rebuild the connection.
+ */
+export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoom {
   const [status, setStatus] = useState<ClientStatus>('connecting')
   const [phase, setPhase] = useState<Phase>('lobby')
   const [roundIndex, setRoundIndex] = useState(0)
@@ -88,9 +93,7 @@ export function useClientRoom(roomCode: string, identity: Identity): ClientRoom 
   }, [identity.playerId, identity.secret])
 
   useEffect(() => {
-    if (!roomCode) return
-
-    const transport = createPeerClient(roomCode, {
+    const transport = connect({
       onOpen() {
         setProblem(null)
         if (credentialsRef.current) {
@@ -157,7 +160,7 @@ export function useClientRoom(roomCode: string, identity: Identity): ClientRoom 
       transport.destroy()
       transportRef.current = null
     }
-  }, [roomCode, sendHello])
+  }, [connect, sendHello])
 
   const join = useCallback(
     (name: string, avatarId: string) => {

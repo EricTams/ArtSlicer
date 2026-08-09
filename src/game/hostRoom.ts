@@ -1,7 +1,18 @@
 import { createPeerHost } from '../net/peerHost'
-import type { ConnId, ConnectionFailure, HostTransport } from '../net/transport'
+import type {
+  ClientHandlers,
+  ClientTransport,
+  ConnId,
+  ConnectionFailure,
+  HostTransport,
+} from '../net/transport'
 import { isKnownPiece } from '../render/pieces'
-import { type ClientMessage, PROTOCOL_VERSION, type RevealedEntry } from '../shared/protocol'
+import {
+  type ClientMessage,
+  type HostMessage,
+  PROTOCOL_VERSION,
+  type RevealedEntry,
+} from '../shared/protocol'
 import { type PlayerId, type RoomState, createRoom, publicPlayers } from '../shared/gameState'
 import { sanitizeScene } from '../shared/scene'
 import { loadRoom, saveRoom } from './persistence'
@@ -18,6 +29,12 @@ export interface HostRoomHandlers {
 const TICK_MS = 250
 
 /**
+ * A tick this far behind schedule means the tab was suspended rather than
+ * merely busy. Well above normal timer jitter and background throttling.
+ */
+const SUSPENSION_THRESHOLD_MS = 5_000
+
+/**
  * Owns the authoritative room: applies the pure reducer to messages arriving
  * from phones, then broadcasts the result. All game truth lives here, and the
  * host owns every deadline so no phone can rush or stall a round.
@@ -31,6 +48,23 @@ export function createHostRoom(handlers: HostRoomHandlers) {
 
   /** Which player each live connection is authenticated as. */
   const connToPlayer = new Map<ConnId, PlayerId>()
+
+  /**
+   * The player hosting on this device, if any. They are treated as an ordinary
+   * connection so their messages run through exactly the same validation as a
+   * remote phone's — there is no privileged local path to drift out of sync.
+   */
+  const LOCAL_CONN: ConnId = 'local'
+  let localHandlers: ClientHandlers | null = null
+
+  function sendTo(conn: ConnId, message: HostMessage): void {
+    if (conn === LOCAL_CONN) localHandlers?.onMessage(message)
+    else transport?.send(conn, message)
+  }
+
+  function disconnectConn(conn: ConnId): void {
+    if (conn !== LOCAL_CONN) transport?.disconnect(conn)
+  }
 
   function setState(next: RoomState): void {
     if (next === state) return
@@ -48,7 +82,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
     // `you`, the ballot, and the player's own vote all differ per recipient,
     // so this cannot be a single broadcast frame.
     for (const [conn, playerId] of connToPlayer) {
-      transport?.send(conn, {
+      sendTo(conn, {
         t: 'state',
         phase: state.phase,
         roomCode: state.roomCode,
@@ -94,7 +128,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
       case 'hello': {
         if (message.protocol !== PROTOCOL_VERSION) {
           // Almost always a phone holding a stale cached bundle from Pages.
-          transport?.send(conn, {
+          sendTo(conn, {
             t: 'error',
             code: 'protocol-mismatch',
             message: 'Your game is out of date. Close the tab and reopen the link.',
@@ -112,7 +146,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
         })
 
         if (result.rejection) {
-          transport?.send(conn, { t: 'error', ...result.rejection })
+          sendTo(conn, { t: 'error', ...result.rejection })
           return
         }
 
@@ -121,12 +155,12 @@ export function createHostRoom(handlers: HostRoomHandlers) {
         for (const [otherConn, playerId] of connToPlayer) {
           if (playerId === message.playerId && otherConn !== conn) {
             connToPlayer.delete(otherConn)
-            transport?.disconnect(otherConn)
+            disconnectConn(otherConn)
           }
         }
 
         connToPlayer.set(conn, message.playerId)
-        transport?.send(conn, {
+        sendTo(conn, {
           t: 'welcome',
           you: message.playerId,
           roomCode: state.roomCode,
@@ -159,7 +193,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
         // ids before this ever reaches the shared screen.
         const scene = sanitizeScene(message.scene, isKnownPiece)
         if (!scene) {
-          transport?.send(conn, {
+          sendTo(conn, {
             t: 'error',
             code: 'invalid',
             message: 'That artwork could not be read.',
@@ -196,7 +230,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
       }
 
       case 'ping':
-        transport?.send(conn, {
+        sendTo(conn, {
           t: 'pong',
           clientTime: message.clientTime,
           hostTime: Date.now(),
@@ -207,7 +241,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
 
   function apply(conn: ConnId, result: ReturnType<typeof reduce>): void {
     if (result.rejection) {
-      transport?.send(conn, { t: 'error', ...result.rejection })
+      sendTo(conn, { t: 'error', ...result.rejection })
       return
     }
     setState(result.state)
@@ -240,17 +274,59 @@ export function createHostRoom(handlers: HostRoomHandlers) {
 
   // Time only moves forward here. Phases also end early when everyone is done,
   // which the reducer handles on the triggering event itself.
+  let lastTick = Date.now()
   const timer = setInterval(() => {
+    const now = Date.now()
+    const gap = now - lastTick
+    lastTick = now
+
+    // A gap far larger than the interval means this tab was suspended — the
+    // host backgrounded the page or the laptop slept. Timers stop, but
+    // Date.now() does not, so the deadline would look long expired and the
+    // reducer would blow through phases. Push deadlines out by the gap instead:
+    // time nobody could play is not play time.
+    if (gap > SUSPENSION_THRESHOLD_MS) {
+      setState(reduce(state, { type: 'SUSPENDED', gap }).state)
+      return
+    }
+
     if (state.deadline === null) return
-    setState(reduce(state, { type: 'TICK', now: Date.now() }).state)
+    setState(reduce(state, { type: 'TICK', now }).state)
   }, TICK_MS)
 
   return {
     getState: () => state,
+
+    /**
+     * Connects the player hosting on this device. Returns the same
+     * ClientTransport shape a remote phone gets, so the player UI cannot tell
+     * the difference and no second code path exists.
+     */
+    attachLocalClient(clientHandlers: ClientHandlers): ClientTransport {
+      localHandlers = clientHandlers
+      // Asynchronous so the caller finishes wiring up before messages arrive.
+      queueMicrotask(() => localHandlers?.onOpen())
+
+      return {
+        send(message) {
+          handleMessage(LOCAL_CONN, message)
+        },
+        destroy() {
+          localHandlers = null
+          const playerId = connToPlayer.get(LOCAL_CONN)
+          connToPlayer.delete(LOCAL_CONN)
+          if (playerId) setState(reduce(state, { type: 'DISCONNECT', playerId }).state)
+        },
+      }
+    },
+
     destroy() {
       clearInterval(timer)
+      localHandlers = null
       transport?.destroy()
       transport = null
     },
   }
 }
+
+export type HostRoom = ReturnType<typeof createHostRoom>

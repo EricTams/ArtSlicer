@@ -1,19 +1,10 @@
 import Peer, { type DataConnection } from 'peerjs'
 
 import { roomCodeToPeerId } from '../shared/roomCode'
-import { type ClientMessage, type HostMessage, parseHostMessage } from '../shared/protocol'
+import { type ClientMessage, parseHostMessage } from '../shared/protocol'
 import { toFailure, watchIce } from './peerHost'
 import { peerOptions } from './peerOptions'
-import type { ClientTransport, ConnectionFailure } from './transport'
-
-export interface ClientHandlers {
-  onOpen(): void
-  onMessage(message: HostMessage): void
-  /** Connection dropped but a retry is scheduled; the UI should say "reconnecting". */
-  onReconnecting(attempt: number): void
-  /** Terminal for this attempt — the UI should explain and offer a retry. */
-  onFailure(failure: ConnectionFailure): void
-}
+import type { ClientHandlers, ClientTransport } from './transport'
 
 const BASE_RETRY_MS = 800
 const MAX_RETRY_MS = 8000

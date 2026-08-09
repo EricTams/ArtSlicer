@@ -22,6 +22,23 @@ export interface ClientTransport {
   destroy(): void
 }
 
+export interface ClientHandlers {
+  onOpen(): void
+  onMessage(message: HostMessage): void
+  /** Connection dropped but a retry is scheduled; the UI should say "reconnecting". */
+  onReconnecting(attempt: number): void
+  /** Terminal for this attempt — the UI should explain and offer a retry. */
+  onFailure(failure: ConnectionFailure): void
+}
+
+/**
+ * How a player's UI obtains a connection. Remote players get a WebRTC
+ * transport; the player hosting on their own device gets an in-process
+ * loopback. Both satisfy this signature, so the player UI is identical either
+ * way and there is no second code path to keep in sync.
+ */
+export type ConnectFn = (handlers: ClientHandlers) => ClientTransport
+
 /** Why a connection could not be established, in terms the UI can explain. */
 export type ConnectionFailure =
   | { kind: 'room-not-found' }

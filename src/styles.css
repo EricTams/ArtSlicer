@@ -634,6 +634,13 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Grid columns are wider than the fixed-size canvas on a phone; centring
+     keeps the drawing from hugging one edge of its card. */
+  align-items: center;
+}
+
+.gallery__item .gallery__caption {
+  align-self: stretch;
 }
 
 .gallery__item--win {
@@ -693,4 +700,127 @@ h3 {
   font-weight: 800;
   color: var(--good);
   margin: 0;
+}
+
+/* ---------- home ---------- */
+
+.home {
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  max-width: 420px;
+}
+
+.home__or {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+}
+
+.home__hint {
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+
+.home form {
+  width: 100%;
+}
+
+.linkbtn {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-2);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---------- host playing on this device ---------- */
+
+.hostplay {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100%;
+}
+
+/* The host's own screen is the only place the QR exists in a phone-hosted
+   game, so it sits above their lobby rather than replacing it. */
+.hostplay__join {
+  display: flex;
+  justify-content: center;
+  padding: 12px 12px 0;
+}
+
+.hostplay__note {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.hostplay > .screen,
+.hostplay > .build,
+.hostplay > .vote,
+.hostplay > .results {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------- per-phone results ---------- */
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  min-height: 100%;
+}
+
+.results__headline {
+  font-size: 1.8rem;
+  text-align: center;
+}
+
+.results__you {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.scoreboard__row--you {
+  border-color: var(--accent-2);
+}
+
+/* A phone shows the gallery as a scrolling grid rather than the big screen's
+   free-flowing row. */
+@media (max-width: 899px) {
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .gallery__item {
+    padding: 5px;
+  }
+
+  .gallery__item canvas {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .gallery__caption {
+    font-size: 0.8rem;
+  }
+
+  .playerchip__avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 1.1rem;
+  }
 }

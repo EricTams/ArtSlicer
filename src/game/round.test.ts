@@ -408,3 +408,42 @@ describe('recovering from a host restart', () => {
     expect(state.phase).toBe('voting')
   })
 })
+
+describe('when the host tab is suspended', () => {
+  it('pushes the deadline forward so time nobody could play is not play time', () => {
+    const state = started(['a', 'b'])
+    const gap = 60_000
+    const after = reduce(state, { type: 'SUSPENDED', gap }).state
+
+    expect(after.deadline).toBe(state.deadline! + gap)
+  })
+
+  it('does not let the round end on the tick that follows a long suspension', () => {
+    let state = started(['a', 'b'])
+    // Suspended for longer than the whole build phase.
+    const gap = BUILD_MS * 2
+    state = reduce(state, { type: 'SUSPENDED', gap }).state
+    state = reduce(state, { type: 'TICK', now: T0 + gap }).state
+
+    expect(state.phase).toBe('building')
+  })
+
+  it('gives players a window to reconnect before the phase can complete early', () => {
+    let state = started(['a', 'b'])
+    state = submitAll(state, ['a'])
+    state = reduce(state, { type: 'SUSPENDED', gap: 30_000 }).state
+    // 'b' is gone; without the grace window 'a' alone would end the round.
+    state = reduce(state, { type: 'DISCONNECT', playerId: 'b' }).state
+    state = reduce(state, { type: 'TICK', now: T0 + 30_000 }).state
+
+    expect(state.phase).toBe('building')
+  })
+
+  it('ignores a nonsensical gap and an untimed phase', () => {
+    const state = started(['a', 'b'])
+    expect(reduce(state, { type: 'SUSPENDED', gap: 0 }).state).toBe(state)
+
+    const untimed: RoomState = { ...state, deadline: null }
+    expect(reduce(untimed, { type: 'SUSPENDED', gap: 5000 }).state).toBe(untimed)
+  })
+})

@@ -1,22 +1,37 @@
-import { usePiecesLoaded } from '../editor/usePiecesLoaded'
-import { describeFailure } from '../net/transport'
-import { getAvatar } from '../shared/avatars'
-import {
-  MAX_PLAYERS,
-  MIN_PLAYERS_TO_START,
-  type PublicPlayer,
-  publicPlayers,
-} from '../shared/gameState'
-import { joinUrl } from '../shared/roomCode'
-import { QrCode } from './QrCode'
-import { BuildingScreen, FinalScreen, ResultsScreen, VotingScreen } from './RoundScreens'
-import { useHostRoom } from './useHostRoom'
+import { useCallback, useState } from 'react'
 
-/** Host entry point — runs on the laptop and is the authoritative game server. */
+import { PlayerFlow } from '../client/PlayerFlow'
+import { loadIdentity } from '../client/identity'
+import { usePiecesLoaded } from '../editor/usePiecesLoaded'
+import type { ClientHandlers } from '../net/transport'
+import { describeFailure } from '../net/transport'
+import type { HostRoom } from '../game/hostRoom'
+import { JoinPanel, Lobby } from './Lobby'
+import { BuildingScreen, FinalScreen, ResultsScreen, VotingScreen } from './RoundScreens'
+import { useBigScreen } from './useBigScreen'
+import { useHostRoom } from './useHostRoom'
+import { useWakeLock } from './useWakeLock'
+
+/**
+ * The host: whichever device opened the room. It is the authoritative server
+ * whether that's a laptop being used as a shared screen or one player's phone.
+ *
+ * On a big screen it shows the room-wide view — the gallery, the reveal, the
+ * scoreboard. On a phone it hands the display over to that player's own game,
+ * because there is no audience to show anything to.
+ */
 export function HostApp() {
-  const { status, state, failure } = useHostRoom()
-  // The host re-renders the scenes phones submit, so it needs the same sprites
-  // they do. Loading starts immediately and overlaps with the lobby wait.
+  const { status, state, failure, room } = useHostRoom()
+  const bigScreen = useBigScreen()
+  // Default: play on this device when hosting from a phone, act as a shared
+  // screen on a laptop or TV. Either can be overridden.
+  const [playHere, setPlayHere] = useState<boolean | null>(null)
+  const playing = playHere ?? !bigScreen
+
+  // The host holds every connection, so its screen must not sleep mid-round.
+  useWakeLock(status === 'ready')
+
+  // The host re-renders the scenes phones submit, so it needs the same sprites.
   const piecesLoaded = usePiecesLoaded()
 
   if (status === 'failed' && failure) {
@@ -33,7 +48,7 @@ export function HostApp() {
     )
   }
 
-  if (status === 'claiming' || !state.roomCode) {
+  if (status === 'claiming' || !state.roomCode || !room) {
     return (
       <div className="screen screen--center">
         <h1 className="brand">
@@ -41,6 +56,18 @@ export function HostApp() {
         </h1>
         <p className="tagline">Opening a room…</p>
       </div>
+    )
+  }
+
+  if (playing) {
+    return (
+      <HostAsPlayer
+        room={room}
+        roomCode={state.roomCode}
+        inLobby={state.phase === 'lobby'}
+        bigScreen={bigScreen}
+        onStopPlaying={() => setPlayHere(false)}
+      />
     )
   }
 
@@ -62,81 +89,53 @@ export function HostApp() {
     case 'finalResults':
       return <FinalScreen state={state} />
     case 'lobby':
-      return <Lobby roomCode={state.roomCode} players={publicPlayers(state)} />
+      return <Lobby state={state} onPlayHere={() => setPlayHere(true)} playing={false} />
   }
 }
 
-function Lobby({ roomCode, players }: { roomCode: string; players: PublicPlayer[] }) {
-  const url = joinUrl(roomCode)
-  const connected = players.filter((p) => p.connected).length
-  const needed = MIN_PLAYERS_TO_START - connected
+/**
+ * The host device playing along. The local player connects through an
+ * in-process loopback that runs the identical message path a remote phone
+ * uses, so this is not a second implementation of anything.
+ */
+function HostAsPlayer({
+  room,
+  roomCode,
+  inLobby,
+  bigScreen,
+  onStopPlaying,
+}: {
+  room: HostRoom
+  roomCode: string
+  inLobby: boolean
+  bigScreen: boolean
+  onStopPlaying(): void
+}) {
+  const [identity] = useState(() => loadIdentity())
+  // Stable across renders, or the player would reconnect constantly.
+  const connect = useCallback(
+    (handlers: ClientHandlers) => room.attachLocalClient(handlers),
+    [room],
+  )
 
   return (
-    <div className="screen">
-      <div className="row">
-        <h1 className="brand" style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)' }}>
-          Art<em>Slicer</em>
-        </h1>
-        <div className="spacer" />
-        <p className="tagline">
-          {connected}/{MAX_PLAYERS} players
+    <div className="hostplay">
+      {/* This device is the only place the QR exists, so the lobby must show
+          it even though this player is busy joining their own game. */}
+      {inLobby && (
+        <div className="hostplay__join">
+          <JoinPanel roomCode={roomCode} compact />
+        </div>
+      )}
+      {bigScreen && (
+        <p className="hostplay__note">
+          You’re hosting and playing on this device.{' '}
+          <button type="button" className="linkbtn" onClick={onStopPlaying}>
+            Use it as a shared screen instead
+          </button>
         </p>
-      </div>
-
-      <div className="lobby">
-        <div className="card stack lobby__join">
-          <h2>Join on your phone</h2>
-          <QrCode value={url} />
-          <div className="stack" style={{ gap: 4 }}>
-            <p className="muted" style={{ margin: 0 }}>
-              or go to <strong>{shortUrl(url)}</strong> and enter
-            </p>
-            <p className="roomcode">{roomCode}</p>
-          </div>
-        </div>
-
-        <div className="stack lobby__players">
-          <h2>Players</h2>
-          {players.length === 0 ? (
-            <p className="muted">Waiting for the first player…</p>
-          ) : (
-            <ul className="playerlist">
-              {players.map((player) => (
-                <PlayerChip key={player.id} player={player} />
-              ))}
-            </ul>
-          )}
-          <div className="spacer" />
-          <p className="muted">
-            {needed > 0
-              ? `Need ${needed} more player${needed === 1 ? '' : 's'} to start.`
-              : `${leaderName(players)} can start the game.`}
-          </p>
-        </div>
-      </div>
+      )}
+      <PlayerFlow connect={connect} identity={identity} roomCode={roomCode} />
     </div>
   )
-}
-
-function PlayerChip({ player }: { player: PublicPlayer }) {
-  const avatar = getAvatar(player.avatarId)
-  return (
-    <li className="playerchip" style={{ opacity: player.connected ? 1 : 0.45 }}>
-      <span className="playerchip__avatar" style={{ background: avatar.color }}>
-        {avatar.glyph}
-      </span>
-      <span className="playerchip__name">{player.name}</span>
-      {player.isLeader && <span className="playerchip__tag">HOST</span>}
-      {!player.connected && <span className="playerchip__tag playerchip__tag--dim">AWAY</span>}
-    </li>
-  )
-}
-
-function leaderName(players: PublicPlayer[]): string {
-  return players.find((p) => p.isLeader)?.name ?? 'The first player'
-}
-
-/** The QR carries the full URL; the printed version just has to be typeable. */
-function shortUrl(url: string): string {
-  return url.replace(/^https?:\/\//, '').replace(/#.*$/, '')
 }

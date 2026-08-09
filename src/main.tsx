@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 
+import { Home } from './Home'
 import { ClientApp } from './client/ClientApp'
 import { EditorPlayground } from './editor/EditorPlayground'
 import { HostApp } from './host/HostApp'
@@ -16,7 +17,8 @@ createRoot(root).render(
         /ArtSlicer/join/ABCD would 404. #/join/ABCD always resolves. */}
     <HashRouter>
       <Routes>
-        <Route path="/" element={<HostApp />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/host" element={<HostApp />} />
         <Route path="/join/:code" element={<ClientApp />} />
         <Route path="/join" element={<ClientApp />} />
         {/* Standalone editor for developing the build tools without a lobby. */}

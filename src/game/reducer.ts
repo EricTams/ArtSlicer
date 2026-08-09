@@ -6,6 +6,7 @@ import {
   MIN_PLAYERS_TO_START,
   type Player,
   type PlayerId,
+  RECOVERY_GRACE_MS,
   RESULTS_MS,
   type RoomState,
   type Submission,
@@ -37,6 +38,8 @@ export type GameEvent =
   | { type: 'VOTE'; playerId: PlayerId; entryId: string; now: number }
   | { type: 'TICK'; now: number }
   | { type: 'RESTART'; playerId: PlayerId }
+  /** The host tab was suspended for `gap` ms and could not run the game. */
+  | { type: 'SUSPENDED'; gap: number }
 
 export type Rejection = { code: ErrorCode; message: string }
 
@@ -62,6 +65,26 @@ export function reduce(state: RoomState, event: GameEvent): ReduceResult {
       return { state: advanceIfDue(state, event.now) }
     case 'RESTART':
       return restart(state, event.playerId)
+    case 'SUSPENDED':
+      return { state: absorbSuspension(state, event.gap) }
+  }
+}
+
+/**
+ * The host's timers stop when its tab is suspended — backgrounded on a phone,
+ * or a sleeping laptop — but Date.now() keeps advancing. Without this the next
+ * tick would see the deadline as long expired and race through phases. Time
+ * nobody could play is not play time, so deadlines move with the gap.
+ */
+function absorbSuspension(state: RoomState, gap: number): RoomState {
+  if (gap <= 0 || state.deadline === null) return state
+
+  return {
+    ...state,
+    deadline: state.deadline + gap,
+    // Players were cut off for that whole gap, so give them the same window to
+    // reconnect that a host restart gets.
+    recoveringUntil: Math.max(state.recoveringUntil ?? 0, Date.now() + RECOVERY_GRACE_MS),
   }
 }
 
