@@ -86,11 +86,18 @@ the scene at full laptop resolution instead of upscaling a phone-sized image.
 
 ### The build screen is a stack of single-purpose tools
 
-The canvas handles only arranging — drag to move, pinch to size and turn. Tap a
-piece and each transformation gets the whole screen to itself, which is what lets
-each one be a physical action instead of a row of sliders. Tools render as
-overlays rather than replacing the canvas, so the Konva stage and its gesture
-listeners survive a trip into a tool and back.
+The canvas handles only arranging — drag to move, pinch to size and turn, or
+drag the selected piece's handle to do the same with one pointer, since a mouse
+never has two. Tap a piece and each transformation gets the whole screen to
+itself, which is what lets each one be a physical action instead of a row of
+sliders. Tools render as overlays rather than replacing the canvas, so the Konva
+stage and its gesture listeners survive a trip into a tool and back.
+
+Gestures are measured from an anchor taken when that leg of the gesture began,
+never from the previous event, and pointer positions are mapped against the
+drawing surface rather than its container — the stage is a square centred in the
+available space, so on a wide screen the container starts hundreds of pixels to
+its left.
 
 ### Slicing splits a piece in two
 

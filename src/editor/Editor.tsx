@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Circle } from 'react-konva'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Circle, Line } from 'react-konva'
 
 import { pieceAt } from '../render/hitTest'
+import { HANDLE_DRAW_RADIUS, handlePosition } from './handle'
 import { SceneView } from '../render/SceneView'
 import type { Cut, Placed, Scene, Squash } from '../shared/scene'
 import { MAX_PIECES, emptyScene } from '../shared/scene'
@@ -64,14 +65,18 @@ export function Editor({ initialScene, onChange }: Props) {
     onChange?.(scene)
   }, [scene, onChange])
 
-  const { ref: canvasRef, setRef: canvasCallbackRef, size } = useSquareSize()
+  const { element: canvasElement, setElement: setCanvasElement, size } = useSquareSize()
   const sceneRef = useRef(scene)
   sceneRef.current = scene
 
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+
   useCanvasGestures(
-    canvasRef,
+    canvasElement,
     size,
     useCallback((x: number, y: number) => pieceAt(sceneRef.current, x, y), []),
+    useCallback(() => selectedRef.current, []),
     {
       onMove: useCallback((id, x, y) => live(movePiece(sceneRef.current, id, x, y)), [live]),
       onTransform: useCallback(
@@ -88,7 +93,7 @@ export function Editor({ initialScene, onChange }: Props) {
   return (
     <>
       <div className="make">
-        <div className="make__canvas" ref={canvasCallbackRef}>
+        <div className="make__canvas" ref={setCanvasElement}>
           {size > 0 && (
             <SceneView scene={scene} size={size}>
               {selected && <SelectionRing piece={selected} />}
@@ -114,7 +119,7 @@ export function Editor({ initialScene, onChange }: Props) {
           <p className="make__hint">
             {scene.pieces.length === 0
               ? 'Open the parts bin to grab something.'
-              : 'Drag to move · pinch to size and turn · tap a piece for tools'}
+              : 'Drag to move · tap a piece for tools · drag its dot to size and turn'}
           </p>
         )}
 
@@ -200,16 +205,39 @@ export function Editor({ initialScene, onChange }: Props) {
  * and squashed piece has no meaningful box.
  */
 function SelectionRing({ piece }: { piece: Placed }) {
+  const handle = handlePosition(piece)
+
   return (
-    <Circle
-      x={piece.x}
-      y={piece.y}
-      radius={30}
-      stroke="#ff4d8d"
-      strokeWidth={7}
-      dash={[18, 12]}
-      listening={false}
-    />
+    <>
+      <Circle
+        x={piece.x}
+        y={piece.y}
+        radius={30}
+        stroke="#ff4d8d"
+        strokeWidth={7}
+        dash={[18, 12]}
+        listening={false}
+      />
+      {/* Tether, so it reads as attached to the piece rather than floating. */}
+      <Line
+        points={[piece.x, piece.y, handle.x, handle.y]}
+        stroke="#ff4d8d"
+        strokeWidth={5}
+        dash={[14, 10]}
+        listening={false}
+      />
+      {/* Drag this to size and turn the piece — the only way to do either
+          with a mouse, which has just one pointer. */}
+      <Circle
+        x={handle.x}
+        y={handle.y}
+        radius={HANDLE_DRAW_RADIUS}
+        fill="#ff4d8d"
+        stroke="#ffffff"
+        strokeWidth={6}
+        listening={false}
+      />
+    </>
   )
 }
 
@@ -225,29 +253,31 @@ function ToolButton({ glyph, label, onClick }: { glyph: string; label: string; o
 /**
  * The canvas is square and as large as the space allows.
  *
- * Re-observes whenever the element identity changes rather than only on mount —
- * observing a node that has since been replaced silently reports zero, which
- * shows up as a canvas that renders nothing.
+ * Measures once directly, then observes. Waiting for the observer alone is not
+ * enough: its callbacks ride the rendering steps, which are paused while a tab
+ * is hidden, so an editor mounted in the background would sit at zero and draw
+ * nothing until something happened to resize it.
+ *
+ * Re-runs whenever the element identity changes rather than only on mount —
+ * observing a node that has since been replaced silently reports zero too.
  */
 function useSquareSize() {
-  const ref = useRef<HTMLDivElement | null>(null)
   const [element, setElement] = useState<HTMLDivElement | null>(null)
   const [size, setSize] = useState(0)
 
-  const setRef = useCallback((node: HTMLDivElement | null) => {
-    ref.current = node
-    setElement(node)
-  }, [])
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!element) return
-    const observer = new ResizeObserver(([entry]) => {
-      const box = entry?.contentRect
-      if (box) setSize(Math.floor(Math.min(box.width, box.height)))
-    })
+
+    const measure = (): void => {
+      const box = element.getBoundingClientRect()
+      setSize(Math.floor(Math.min(box.width, box.height)))
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
     observer.observe(element)
     return () => observer.disconnect()
   }, [element])
 
-  return { ref, setRef, size }
+  return { element, setElement, size }
 }
