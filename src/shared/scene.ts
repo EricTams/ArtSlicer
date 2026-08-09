@@ -83,7 +83,12 @@ export const MAX_CUTS_PER_PIECE = 4
 export const MIN_SCALE = 0.15
 export const MAX_SCALE = 4
 export const MIN_SQUASH = 1
-export const MAX_SQUASH = 6
+/**
+ * The cap on one axis' *accumulated* crush. A single squeeze does far less
+ * than this — reaching the extreme takes repeated hits, which is the point of
+ * the crusher.
+ */
+export const MAX_SQUASH = 12
 
 export function emptyScene(): Scene {
   return { pieces: [] }

@@ -16,6 +16,10 @@ One person taps **Start a game** on whatever screen the room can see — a lapto
 or TV if there is one, otherwise just their phone. Everyone else scans the QR
 code. The first player to join starts the game.
 
+There's also **Play on your own**, which drops you straight into the draw screen
+with a prompt and no clock. Instead of submitting, you take a new prompt and
+start again — handy for learning the tools before playing with other people.
+
 ---
 
 ## How it works
@@ -104,6 +108,11 @@ expressed as `scaleX`/`scaleY`. Each squash is `{angle, factor}` in the piece's
 own frame, rendered by conjugating a scale by that angle, and successive squashes
 compose by nesting. Angle 0 crushes vertically — a convention pinned down by
 tests, because getting it backwards silently mirrors the deformation.
+
+One squeeze does little on purpose — a hard slam is about 1.7× — so extreme
+shapes come from hitting it repeatedly. Squeezes aimed the same way merge into a
+single crush by multiplying their factors, so hammering the jaws costs no extra
+nesting and only distinct axes count against the per-piece limit.
 
 ### Tinting
 

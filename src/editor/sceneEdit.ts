@@ -4,6 +4,7 @@ import {
   MAX_CUTS_PER_PIECE,
   MAX_PIECES,
   MAX_SCALE,
+  MAX_SQUASH,
   MAX_SQUASHES_PER_PIECE,
   MIN_SCALE,
   type Placed,
@@ -113,12 +114,46 @@ export function clearTint(scene: Scene, id: string): Scene {
   return replace(scene, next)
 }
 
+/**
+ * Squeezes aimed the same way are the same crush, continued. Merging them
+ * keeps repeated hits from stacking a nested transform each time — which is
+ * what makes "squeeze it again" the natural way to reach an extreme shape
+ * rather than an expensive one.
+ */
+const SAME_AXIS_TOLERANCE = 0.15
+
+export function mergeSquash(squashes: readonly Squash[], next: Squash): Squash[] | null {
+  const result = [...squashes]
+  const last = result[result.length - 1]
+
+  if (last && Math.abs(angleBetween(last.angle, next.angle)) < SAME_AXIS_TOLERANCE) {
+    result[result.length - 1] = {
+      angle: last.angle,
+      // Crushes along one axis multiply: squeezing 1.5× twice is 2.25×.
+      factor: Math.min(MAX_SQUASH, last.factor * next.factor),
+    }
+    return result
+  }
+
+  if (result.length >= MAX_SQUASHES_PER_PIECE) return null
+  result.push({ ...next, factor: Math.min(MAX_SQUASH, next.factor) })
+  return result
+}
+
+/** Smallest signed angle between two directions, accounting for wraparound. */
+function angleBetween(a: number, b: number): number {
+  const diff = (b - a) % (Math.PI * 2)
+  if (diff > Math.PI) return diff - Math.PI * 2
+  if (diff < -Math.PI) return diff + Math.PI * 2
+  return diff
+}
+
 export function addSquash(scene: Scene, id: string, squash: Squash): Scene {
   const piece = find(scene, id)
   if (!piece) return scene
 
-  const squashes = [...(piece.squashes ?? []), squash]
-  if (squashes.length > MAX_SQUASHES_PER_PIECE) return scene
+  const squashes = mergeSquash(piece.squashes ?? [], squash)
+  if (!squashes) return scene
   return updatePiece(scene, id, { squashes })
 }
 

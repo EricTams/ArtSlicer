@@ -25,7 +25,7 @@ export function PieceNode({
   onDragEnd,
   /** Applied on top of the stored transform, for tool-time previews. */
   overrideRotation,
-  extraSquash,
+  extraSquashes,
 }: {
   piece: Placed
   interactive?: boolean
@@ -33,7 +33,7 @@ export function PieceNode({
   onSelect?: (id: string) => void
   onDragEnd?: (id: string, x: number, y: number) => void
   overrideRotation?: number
-  extraSquash?: Squash | null
+  extraSquashes?: readonly Squash[]
 }) {
   const def = getPiece(piece.pieceId)
   const image = getImage(piece.pieceId)
@@ -44,8 +44,7 @@ export function PieceNode({
   // Every cut removed the piece entirely.
   if (clip.length === 0) return null
 
-  const squashes = [...(piece.squashes ?? [])]
-  if (extraSquash) squashes.push(extraSquash)
+  const squashes = [...(piece.squashes ?? []), ...(extraSquashes ?? [])]
 
   const rotation = overrideRotation ?? piece.rotation
 

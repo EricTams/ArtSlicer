@@ -55,6 +55,10 @@ export function Home() {
           </button>
         </form>
 
+        <button className="btn btn--ghost btn--wide" onClick={() => navigate('/solo')}>
+          Play on your own
+        </button>
+
         <p className="muted home__hint">
           Starting a game works best on whatever screen the room can see — a laptop or TV if you
           have one, otherwise your phone.

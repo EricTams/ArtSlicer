@@ -45,13 +45,14 @@ export function PiecePreview({
   piece,
   size,
   rotation,
-  extraSquash,
+  extraSquashes,
 }: {
   piece: Placed
   size: number
   /** Overrides the piece's own angle — the squish tool spins it to aim. */
   rotation?: number
-  extraSquash?: Squash | null
+  /** Not yet committed, so a tool can preview what it is about to apply. */
+  extraSquashes?: readonly Squash[]
 }) {
   const centred: Placed = { ...piece, x: DESIGN_SIZE / 2, y: DESIGN_SIZE / 2 }
   const scale = size / DESIGN_SIZE
@@ -59,7 +60,7 @@ export function PiecePreview({
   return (
     <Stage width={size} height={size} scaleX={scale} scaleY={scale} listening={false}>
       <Layer listening={false}>
-        <PieceNode piece={centred} overrideRotation={rotation} extraSquash={extraSquash} />
+        <PieceNode piece={centred} overrideRotation={rotation} extraSquashes={extraSquashes} />
       </Layer>
     </Stage>
   )

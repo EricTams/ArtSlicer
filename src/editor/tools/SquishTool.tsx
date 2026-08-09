@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 
-import { MAX_SQUASH, type Placed, type Squash } from '../../shared/scene'
+import type { Placed, Squash } from '../../shared/scene'
 import { capturePointer } from '../pointer'
+import { mergeSquash } from '../sceneEdit'
 import { PiecePreview, ToolShell } from './ToolShell'
 
 const STAGE = 260
@@ -10,12 +11,14 @@ const OPEN_GAP = 0.9
 const CLOSED_GAP = 0.12
 
 /**
- * Fast crushes deform more than slow ones. Squeezing gently lets you dial in a
- * shape; slamming the jaws shut flattens it — which is the bit that makes the
- * tool feel like a tool rather than a slider.
+ * One squeeze deliberately does little: a gentle full close is 1.2×, a hard
+ * slam 1.7×. Extreme shapes come from hitting it again and again, which is
+ * what makes it a crusher rather than a slider — and repeated squeezes at the
+ * same aim merge into a single crush, so hammering it costs nothing.
  */
+const GENTLE_SQUEEZE = 0.2
+const SPEED_BONUS = 0.5
 const SPEED_REFERENCE = 900 // px/sec that counts as a hard slam
-const MAX_SPEED_BONUS = 2.2
 
 export function SquishTool({
   piece,
@@ -23,32 +26,30 @@ export function SquishTool({
   onCancel,
 }: {
   piece: Placed
-  onCommit(squash: Squash): void
+  onCommit(squashes: Squash[]): void
   onCancel(): void
 }) {
   /** How far the art is spun on screen, to aim it at the jaws. */
   const [angle, setAngle] = useState(0)
   const [gap, setGap] = useState(OPEN_GAP)
-  const [squash, setSquash] = useState<Squash | null>(null)
+  /** Squeezes so far in this visit, previewed live and committed together. */
+  const [pending, setPending] = useState<Squash[]>([])
 
   const drag = useRef<{ y: number; time: number; peakSpeed: number } | null>(null)
 
-  const commit = (): void => {
-    if (squash) onCommit(squash)
-    else onCancel()
-  }
+  const total = pending.reduce((most, squash) => Math.max(most, squash.factor), 1)
 
   return (
     <ToolShell
       title="Squish"
       hint={
-        squash
-          ? `Crushed ${squash.factor.toFixed(1)}×. Squeeze again or hit Done.`
-          : 'Spin the art to aim, then drag the jaws together. Fast squeezes crush harder.'
+        pending.length > 0
+          ? `Crushed ${total.toFixed(1)}×. Keep squeezing to flatten it more.`
+          : 'Spin the art to aim, then drag the jaws together. Squeeze again and again.'
       }
       onCancel={onCancel}
-      onDone={commit}
-      doneLabel={squash ? 'Keep it' : 'Done'}
+      onDone={() => (pending.length > 0 ? onCommit(pending) : onCancel())}
+      doneLabel={pending.length > 0 ? 'Keep it' : 'Done'}
     >
       <div className="squish">
         <div
@@ -65,7 +66,6 @@ export function SquishTool({
             const now = performance.now()
             const dy = event.clientY - state.y
             const dt = Math.max(1, now - state.time)
-            // Only closing counts; opening the jaws back up just resets them.
             const speed = (Math.abs(dy) / dt) * 1000
 
             state.y = event.clientY
@@ -84,17 +84,22 @@ export function SquishTool({
             if (!state) return
 
             const closed = (OPEN_GAP - gap) / (OPEN_GAP - CLOSED_GAP)
+            // A nudge is not a squeeze; let the jaws spring back.
             if (closed < 0.08) {
               setGap(OPEN_GAP)
               return
             }
 
-            const speedBonus = 1 + Math.min(state.peakSpeed / SPEED_REFERENCE, 1) * MAX_SPEED_BONUS
-            const factor = Math.min(MAX_SQUASH, 1 + closed * speedBonus)
-            // The jaws crush vertically on screen. The art is spun by `angle`
-            // to aim, so in the piece's own frame that direction is turned the
-            // other way — otherwise the crush lands mirrored.
-            setSquash({ angle: -angle, factor })
+            const speedFraction = Math.min(state.peakSpeed / SPEED_REFERENCE, 1)
+            const factor = 1 + closed * (GENTLE_SQUEEZE + speedFraction * SPEED_BONUS)
+
+            setPending((current) => {
+              // The jaws crush vertically on screen. The art is spun by `angle`
+              // to aim, so in the piece's own frame that direction is turned
+              // the other way — otherwise the crush lands mirrored.
+              const merged = mergeSquash(current, { angle: -angle, factor })
+              return merged ?? current
+            })
             setGap(OPEN_GAP)
           }}
         >
@@ -104,8 +109,8 @@ export function SquishTool({
               piece={piece}
               size={STAGE}
               rotation={angle}
-              // Show the crush that is being applied, live.
-              extraSquash={squash ?? null}
+              // Show everything squeezed so far, live.
+              extraSquashes={pending}
             />
           </div>
           <Jaw position="bottom" gap={gap} stage={STAGE} />
@@ -123,9 +128,9 @@ export function SquishTool({
           />
         </label>
 
-        {squash && (
-          <button type="button" className="btn btn--ghost" onClick={() => setSquash(null)}>
-            Undo this squeeze
+        {pending.length > 0 && (
+          <button type="button" className="btn btn--ghost" onClick={() => setPending([])}>
+            Start over
           </button>
         )}
       </div>

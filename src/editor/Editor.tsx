@@ -168,8 +168,12 @@ export function Editor({ initialScene, onChange }: Props) {
       {selected && screen === 'squish' && (
         <SquishTool
           piece={selected}
-          onCommit={(squash: Squash) => {
-            commit(addSquash(sceneRef.current, selected.id, squash))
+          onCommit={(squashes: Squash[]) => {
+            // Applied one at a time so the same merging rule governs both the
+            // preview inside the tool and what lands on the piece.
+            let next = sceneRef.current
+            for (const squash of squashes) next = addSquash(next, selected.id, squash)
+            commit(next)
             setScreen('canvas')
           }}
           onCancel={() => setScreen('canvas')}

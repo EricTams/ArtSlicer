@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MAX_CUTS_PER_PIECE,
   MAX_PIECES,
+  MAX_SQUASH,
   MAX_SQUASHES_PER_PIECE,
   MAX_SCALE,
   MIN_SCALE,
@@ -121,12 +122,47 @@ describe('spraying paint', () => {
 })
 
 describe('squashing', () => {
-  it('accumulates squashes up to the cap then refuses more', () => {
-    let scene = withPiece()
-    for (let i = 0; i < MAX_SQUASHES_PER_PIECE; i++) scene = addSquash(scene, 'a', SQUASH)
-    expect(scene.pieces[0]!.squashes).toHaveLength(MAX_SQUASHES_PER_PIECE)
+  it('merges repeated squeezes at the same aim into one crush', () => {
+    let scene = addSquash(withPiece(), 'a', { angle: 0, factor: 1.5 })
+    scene = addSquash(scene, 'a', { angle: 0, factor: 1.5 })
 
-    expect(addSquash(scene, 'a', SQUASH)).toBe(scene)
+    // One transform, not two — and crushes along an axis multiply.
+    expect(scene.pieces[0]!.squashes).toHaveLength(1)
+    expect(scene.pieces[0]!.squashes![0]!.factor).toBeCloseTo(2.25)
+  })
+
+  it('merges squeezes aimed within a hair of each other', () => {
+    let scene = addSquash(withPiece(), 'a', { angle: 0, factor: 1.4 })
+    scene = addSquash(scene, 'a', { angle: 0.05, factor: 1.4 })
+    expect(scene.pieces[0]!.squashes).toHaveLength(1)
+  })
+
+  it('starts a new crush when aimed somewhere else', () => {
+    let scene = addSquash(withPiece(), 'a', { angle: 0, factor: 1.5 })
+    scene = addSquash(scene, 'a', { angle: Math.PI / 2, factor: 1.5 })
+    expect(scene.pieces[0]!.squashes).toHaveLength(2)
+  })
+
+  it('treats angles that wrap around as the same axis', () => {
+    let scene = addSquash(withPiece(), 'a', { angle: 0.05, factor: 1.5 })
+    scene = addSquash(scene, 'a', { angle: Math.PI * 2 - 0.05, factor: 1.5 })
+    expect(scene.pieces[0]!.squashes).toHaveLength(1)
+  })
+
+  it('caps how far one axis can be crushed, however many times it is hit', () => {
+    let scene = withPiece()
+    for (let i = 0; i < 40; i++) scene = addSquash(scene, 'a', { angle: 0, factor: 1.5 })
+    expect(scene.pieces[0]!.squashes![0]!.factor).toBe(MAX_SQUASH)
+  })
+
+  it('refuses more once every axis slot is used', () => {
+    let scene = withPiece()
+    for (let i = 0; i < MAX_SQUASHES_PER_PIECE; i++) {
+      // Spread them out so each starts a new crush rather than merging.
+      scene = addSquash(scene, 'a', { angle: i * 0.6, factor: 1.3 })
+    }
+    expect(scene.pieces[0]!.squashes).toHaveLength(MAX_SQUASHES_PER_PIECE)
+    expect(addSquash(scene, 'a', { angle: 3, factor: 1.3 })).toBe(scene)
   })
 
   it('clears every squash, dropping the field entirely', () => {
