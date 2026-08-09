@@ -32,7 +32,9 @@ export function Countdown({ deadline, clockOffset = 0, className }: Props) {
   const urgent = seconds <= 10
 
   return (
-    <span className={`countdown${urgent ? ' countdown--urgent' : ''}${className ? ` ${className}` : ''}`}>
+    <span
+      className={`countdown${urgent ? ' countdown--urgent' : ''}${className ? ` ${className}` : ''}`}
+    >
       {formatClock(seconds)}
     </span>
   )

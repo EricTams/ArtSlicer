@@ -1,7 +1,12 @@
 import { usePiecesLoaded } from '../editor/usePiecesLoaded'
 import { describeFailure } from '../net/transport'
 import { getAvatar } from '../shared/avatars'
-import { MAX_PLAYERS, MIN_PLAYERS_TO_START, type PublicPlayer, publicPlayers } from '../shared/gameState'
+import {
+  MAX_PLAYERS,
+  MIN_PLAYERS_TO_START,
+  type PublicPlayer,
+  publicPlayers,
+} from '../shared/gameState'
 import { joinUrl } from '../shared/roomCode'
 import { QrCode } from './QrCode'
 import { BuildingScreen, FinalScreen, ResultsScreen, VotingScreen } from './RoundScreens'

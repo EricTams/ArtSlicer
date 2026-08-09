@@ -92,7 +92,14 @@ function sanitizePlaced(input: unknown, isKnownPiece: (id: string) => boolean): 
   const scaleY = num(raw['scaleY'])
   const rotation = num(raw['rotation'])
   const z = num(raw['z'])
-  if (x === null || y === null || scaleX === null || scaleY === null || rotation === null || z === null) {
+  if (
+    x === null ||
+    y === null ||
+    scaleX === null ||
+    scaleY === null ||
+    rotation === null ||
+    z === null
+  ) {
     return null
   }
 

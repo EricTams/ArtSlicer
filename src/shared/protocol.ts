@@ -25,6 +25,7 @@ export type ClientMessage =
       clientTime: number
     }
   | { t: 'start' }
+  | { t: 'restart' }
   | { t: 'submit'; scene: unknown }
   | { t: 'vote'; entryId: string }
   | { t: 'ping'; clientTime: number }
@@ -66,16 +67,14 @@ export type HostMessage =
       winners?: PlayerId[]
       /** True once this player's scene is in for the round. */
       youSubmitted: boolean
+      /** True when this player may start the next game from the final screen. */
+      canRestart: boolean
     }
   | { t: 'pong'; clientTime: number; hostTime: number }
   | { t: 'error'; code: ErrorCode; message: string }
 
 export type ErrorCode =
-  | 'room-full'
-  | 'protocol-mismatch'
-  | 'bad-secret'
-  | 'game-in-progress'
-  | 'invalid'
+  'room-full' | 'protocol-mismatch' | 'bad-secret' | 'game-in-progress' | 'invalid'
 
 /**
  * DataChannel payloads are untyped at runtime, so validate the shape of
@@ -111,6 +110,9 @@ export function parseClientMessage(data: unknown): ClientMessage | null {
 
     case 'start':
       return { t: 'start' }
+
+    case 'restart':
+      return { t: 'restart' }
 
     case 'submit':
       if (!('scene' in msg)) return null

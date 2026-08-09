@@ -1,5 +1,12 @@
 import type { Cut } from '../shared/scene'
-import { DESIGN_SIZE, MAX_CUTS_PER_PIECE, MAX_PIECES, type Placed, type Scene, topZ } from '../shared/scene'
+import {
+  DESIGN_SIZE,
+  MAX_CUTS_PER_PIECE,
+  MAX_PIECES,
+  type Placed,
+  type Scene,
+  topZ,
+} from '../shared/scene'
 import { PALETTE } from '../render/palette'
 
 /**

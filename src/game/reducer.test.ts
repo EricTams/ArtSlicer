@@ -87,7 +87,10 @@ describe('reclaiming a seat', () => {
   it('restores a disconnected player with the right secret, keeping their score', () => {
     let state = join(join(createRoom('ACDF'), 'p1', { now: 1 }), 'p2', { now: 2 })
     state = reduce(state, { type: 'START', playerId: 'p1', now: 5000 }).state
-    state = { ...state, players: state.players.map((p) => (p.id === 'p2' ? { ...p, score: 300 } : p)) }
+    state = {
+      ...state,
+      players: state.players.map((p) => (p.id === 'p2' ? { ...p, score: 300 } : p)),
+    }
     state = reduce(state, { type: 'DISCONNECT', playerId: 'p2' }).state
     expect(state.players.find((p) => p.id === 'p2')?.connected).toBe(false)
 

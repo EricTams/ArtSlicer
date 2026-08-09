@@ -4,12 +4,7 @@ import type { Scene } from './scene'
 
 export type PlayerId = string
 
-export type Phase =
-  | 'lobby'
-  | 'building'
-  | 'voting'
-  | 'roundResults'
-  | 'finalResults'
+export type Phase = 'lobby' | 'building' | 'voting' | 'roundResults' | 'finalResults'
 
 /** Everything the host knows about a player, including private fields. */
 export interface Player {
@@ -64,6 +59,13 @@ export interface RoomState {
   votes: Record<PlayerId, string>
   /** Absolute epoch ms for the current phase, or null when untimed. */
   deadline: number | null
+  /**
+   * Set while the room is recovering from a host restart. Players trickle back
+   * one at a time, and the first to return may already have submitted — which
+   * would satisfy "everyone here is done" and end the round before the rest
+   * reconnect. Until this passes, only the clock may advance a phase.
+   */
+  recoveringUntil: number | null
   /** Points earned in the round just scored, for the results screen. */
   lastRoundPoints: Record<PlayerId, number>
   lastRoundWinners: PlayerId[]
@@ -79,6 +81,12 @@ export const BUILD_MS = 150_000
 export const VOTE_MS = 45_000
 export const RESULTS_MS = 9_000
 
+/**
+ * How long a resumed room waits for phones to find their way back. Clients
+ * retry with backoff capped at 8s, so this covers a couple of attempts.
+ */
+export const RECOVERY_GRACE_MS = 20_000
+
 export function createRoom(roomCode: string): RoomState {
   return {
     roomCode,
@@ -92,6 +100,7 @@ export function createRoom(roomCode: string): RoomState {
     submissions: [],
     votes: {},
     deadline: null,
+    recoveringUntil: null,
     lastRoundPoints: {},
     lastRoundWinners: [],
   }

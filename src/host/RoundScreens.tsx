@@ -124,6 +124,7 @@ export function ResultsScreen({ state }: { state: RoomState }) {
 
 export function FinalScreen({ state }: { state: RoomState }) {
   const ranked = sortedByScore(state)
+  const leader = state.players.find((player) => player.id === state.leaderId && player.connected)
   const top = ranked[0]
   // Ties at the top all win — same rule as the per-round bonus.
   const champions = top ? ranked.filter((player) => player.score === top.score) : []
@@ -154,7 +155,9 @@ export function FinalScreen({ state }: { state: RoomState }) {
       {/* When everyone tied, the podium already lists the whole room and a
           second copy of the same names reads as a bug. */}
       {ranked.length > champions.length && <Scoreboard players={ranked} />}
-      <p className="muted">Refresh this page to play again.</p>
+      <p className="muted">
+        {leader ? `${leader.name} can start another game.` : 'Refresh this page to play again.'}
+      </p>
     </div>
   )
 }

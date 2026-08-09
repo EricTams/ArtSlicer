@@ -28,6 +28,7 @@ export interface ClientRoom {
   ballot: BallotEntry[]
   yourVote: string | null
   youSubmitted: boolean
+  canRestart: boolean
   reveal: RevealedEntry[]
   winners: PlayerId[]
   /** A human-readable problem, whether from the transport or the host. */
@@ -36,6 +37,7 @@ export interface ClientRoom {
   clockOffset: number
   join(name: string, avatarId: string): void
   start(): void
+  restart(): void
   submit(scene: Scene): void
   vote(entryId: string): void
 }
@@ -55,6 +57,7 @@ export function useClientRoom(roomCode: string, identity: Identity): ClientRoom 
   const [ballot, setBallot] = useState<BallotEntry[]>([])
   const [yourVote, setYourVote] = useState<string | null>(null)
   const [youSubmitted, setYouSubmitted] = useState(false)
+  const [canRestart, setCanRestart] = useState(false)
   const [reveal, setReveal] = useState<RevealedEntry[]>([])
   const [winners, setWinners] = useState<PlayerId[]>([])
   const [problem, setProblem] = useState<string | null>(null)
@@ -115,6 +118,7 @@ export function useClientRoom(roomCode: string, identity: Identity): ClientRoom 
             setBallot(message.ballot ?? [])
             setYourVote(message.yourVote ?? null)
             setYouSubmitted(message.youSubmitted)
+            setCanRestart(message.canRestart)
             setReveal(message.reveal ?? [])
             setWinners(message.winners ?? [])
             break
@@ -165,6 +169,7 @@ export function useClientRoom(roomCode: string, identity: Identity): ClientRoom 
   )
 
   const start = useCallback(() => transportRef.current?.send({ t: 'start' }), [])
+  const restart = useCallback(() => transportRef.current?.send({ t: 'restart' }), [])
   const submit = useCallback(
     (scene: Scene) => transportRef.current?.send({ t: 'submit', scene }),
     [],
@@ -187,12 +192,14 @@ export function useClientRoom(roomCode: string, identity: Identity): ClientRoom 
     ballot,
     yourVote,
     youSubmitted,
+    canRestart,
     reveal,
     winners,
     problem,
     clockOffset,
     join,
     start,
+    restart,
     submit,
     vote,
   }

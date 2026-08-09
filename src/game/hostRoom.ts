@@ -4,6 +4,7 @@ import { isKnownPiece } from '../render/pieces'
 import { type ClientMessage, PROTOCOL_VERSION, type RevealedEntry } from '../shared/protocol'
 import { type PlayerId, type RoomState, createRoom, publicPlayers } from '../shared/gameState'
 import { sanitizeScene } from '../shared/scene'
+import { loadRoom, saveRoom } from './persistence'
 import { ballotFor, canStart, reduce } from './reducer'
 import { tallyRound } from './scoring'
 
@@ -22,7 +23,10 @@ const TICK_MS = 250
  * host owns every deadline so no phone can rush or stall a round.
  */
 export function createHostRoom(handlers: HostRoomHandlers) {
-  let state: RoomState = createRoom('')
+  // A game interrupted mid-round is picked back up under its original room
+  // code, so the phones already pointed at it simply reconnect.
+  const resumed = loadRoom()
+  let state: RoomState = resumed ?? createRoom('')
   let transport: HostTransport | null = null
 
   /** Which player each live connection is authenticated as. */
@@ -31,6 +35,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
   function setState(next: RoomState): void {
     if (next === state) return
     state = next
+    saveRoom(state)
     handlers.onStateChange(state)
     broadcastState()
   }
@@ -65,6 +70,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
           : {}),
         ...(reveal ? { reveal, winners: state.lastRoundWinners } : {}),
         youSubmitted: state.submissions.some((entry) => entry.playerId === playerId),
+        canRestart: state.phase === 'finalResults' && state.leaderId === playerId,
       })
     }
   }
@@ -138,6 +144,13 @@ export function createHostRoom(handlers: HostRoomHandlers) {
         return
       }
 
+      case 'restart': {
+        const playerId = connToPlayer.get(conn)
+        if (!playerId) return
+        apply(conn, reduce(state, { type: 'RESTART', playerId }))
+        return
+      }
+
       case 'submit': {
         const playerId = connToPlayer.get(conn)
         if (!playerId) return
@@ -146,7 +159,11 @@ export function createHostRoom(handlers: HostRoomHandlers) {
         // ids before this ever reaches the shared screen.
         const scene = sanitizeScene(message.scene, isKnownPiece)
         if (!scene) {
-          transport?.send(conn, { t: 'error', code: 'invalid', message: 'That artwork could not be read.' })
+          transport?.send(conn, {
+            t: 'error',
+            code: 'invalid',
+            message: 'That artwork could not be read.',
+          })
           return
         }
 
@@ -166,12 +183,24 @@ export function createHostRoom(handlers: HostRoomHandlers) {
       case 'vote': {
         const playerId = connToPlayer.get(conn)
         if (!playerId) return
-        apply(conn, reduce(state, { type: 'VOTE', playerId, entryId: message.entryId, now: Date.now() }))
+        apply(
+          conn,
+          reduce(state, {
+            type: 'VOTE',
+            playerId,
+            entryId: message.entryId,
+            now: Date.now(),
+          }),
+        )
         return
       }
 
       case 'ping':
-        transport?.send(conn, { t: 'pong', clientTime: message.clientTime, hostTime: Date.now() })
+        transport?.send(conn, {
+          t: 'pong',
+          clientTime: message.clientTime,
+          hostTime: Date.now(),
+        })
         return
     }
   }
@@ -184,27 +213,30 @@ export function createHostRoom(handlers: HostRoomHandlers) {
     setState(result.state)
   }
 
-  transport = createPeerHost({
-    onReady(roomCode) {
-      state = { ...state, roomCode }
-      handlers.onStateChange(state)
-      handlers.onReady(roomCode)
+  transport = createPeerHost(
+    {
+      onReady(roomCode) {
+        state = { ...state, roomCode }
+        handlers.onStateChange(state)
+        handlers.onReady(roomCode)
+      },
+      onConnect() {
+        // Nothing to do until the client identifies itself with `hello`.
+      },
+      onMessage: handleMessage,
+      onDisconnect(conn) {
+        const playerId = connToPlayer.get(conn)
+        connToPlayer.delete(conn)
+        if (!playerId) return
+        // Another connection may already have taken over this seat (fast
+        // reconnect); only mark the player gone if none remains.
+        if ([...connToPlayer.values()].includes(playerId)) return
+        setState(reduce(state, { type: 'DISCONNECT', playerId }).state)
+      },
+      onFailure: handlers.onFailure,
     },
-    onConnect() {
-      // Nothing to do until the client identifies itself with `hello`.
-    },
-    onMessage: handleMessage,
-    onDisconnect(conn) {
-      const playerId = connToPlayer.get(conn)
-      connToPlayer.delete(conn)
-      if (!playerId) return
-      // Another connection may already have taken over this seat (fast
-      // reconnect); only mark the player gone if none remains.
-      if ([...connToPlayer.values()].includes(playerId)) return
-      setState(reduce(state, { type: 'DISCONNECT', playerId }).state)
-    },
-    onFailure: handlers.onFailure,
-  })
+    resumed?.roomCode,
+  )
 
   // Time only moves forward here. Phases also end early when everyone is done,
   // which the reducer handles on the triggering event itself.

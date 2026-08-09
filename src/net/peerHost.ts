@@ -18,21 +18,36 @@ export interface HostHandlers {
 const MAX_CODE_ATTEMPTS = 5
 
 /**
+ * When resuming, the old peer may still be registered for a moment after the
+ * tab that held it went away, so retry the same code before giving up on it.
+ */
+const RESUME_ATTEMPTS = 3
+const RESUME_RETRY_MS = 1200
+
+/**
  * Hosts a room by claiming `artslicer-<CODE>` as its peer ID on the PeerJS
  * broker. Because the ID *is* the room code, phones can derive it from the QR
  * link alone — no lookup service, no database.
  */
-export function createPeerHost(handlers: HostHandlers): HostTransport & { destroy(): void } {
+export function createPeerHost(
+  handlers: HostHandlers,
+  /** Reclaim this exact code when resuming an interrupted game. */
+  preferredCode?: string,
+): HostTransport & { destroy(): void } {
   const connections = new Map<ConnId, DataConnection>()
   let peer: Peer | null = null
   let destroyed = false
   let attempt = 0
+  let resumeAttempt = 0
 
   function claim(): void {
     if (destroyed) return
 
     attempt += 1
-    const roomCode = generateRoomCode()
+    // Keep asking for the saved code until it frees up; only then fall back to
+    // a fresh one, because every phone in the room is pointed at the old code.
+    const resuming = Boolean(preferredCode) && resumeAttempt < RESUME_ATTEMPTS
+    const roomCode = resuming ? preferredCode! : generateRoomCode()
     const current = new Peer(roomCodeToPeerId(roomCode), peerOptions())
     peer = current
 
@@ -52,12 +67,22 @@ export function createPeerHost(handlers: HostHandlers): HostTransport & { destro
     current.on('error', (err) => {
       if (destroyed) return
 
-      // The public broker is shared with every other PeerJS app and its docs
-      // warn that manually-set IDs collide, so re-roll rather than give up.
-      if (err.type === 'unavailable-id' && attempt < MAX_CODE_ATTEMPTS) {
-        current.destroy()
-        claim()
-        return
+      if (err.type === 'unavailable-id') {
+        // Resuming: the previous tab's peer may not have been released yet, so
+        // wait and ask for the same code again before abandoning it.
+        if (resuming) {
+          resumeAttempt += 1
+          current.destroy()
+          setTimeout(() => claim(), RESUME_RETRY_MS)
+          return
+        }
+        // The public broker is shared with every other PeerJS app and its docs
+        // warn that manually-set IDs collide, so re-roll rather than give up.
+        if (attempt < MAX_CODE_ATTEMPTS) {
+          current.destroy()
+          claim()
+          return
+        }
       }
 
       handlers.onFailure(toFailure(err))

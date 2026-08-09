@@ -36,25 +36,25 @@ const box =
 const ring = (outer, thickness) => (x, y) => Math.abs(Math.hypot(x, y) - outer) - thickness
 
 /** Regular polygon via the max of its half-plane distances. */
-const polygon = (r, sides, rotate = -Math.PI / 2) => (x, y) => {
-  let d = -Infinity
-  for (let i = 0; i < sides; i++) {
-    const a = rotate + (i * 2 * Math.PI) / sides
-    d = Math.max(d, x * Math.cos(a) + y * Math.sin(a) - r)
-  }
-  return d
-}
-
-const star =
-  (outer, inner, points) =>
+const polygon =
+  (r, sides, rotate = -Math.PI / 2) =>
   (x, y) => {
-    const angle = Math.atan2(y, x)
-    const step = Math.PI / points
-    const phase = ((angle % (2 * step)) + 2 * step) % (2 * step)
-    // Interpolate the radius between spike and valley.
-    const t = Math.abs(phase - step) / step
-    return Math.hypot(x, y) - (inner + (outer - inner) * t)
+    let d = -Infinity
+    for (let i = 0; i < sides; i++) {
+      const a = rotate + (i * 2 * Math.PI) / sides
+      d = Math.max(d, x * Math.cos(a) + y * Math.sin(a) - r)
+    }
+    return d
   }
+
+const star = (outer, inner, points) => (x, y) => {
+  const angle = Math.atan2(y, x)
+  const step = Math.PI / points
+  const phase = ((angle % (2 * step)) + 2 * step) % (2 * step)
+  // Interpolate the radius between spike and valley.
+  const t = Math.abs(phase - step) / step
+  return Math.hypot(x, y) - (inner + (outer - inner) * t)
+}
 
 const capsule = (length, r) => (x, y) => Math.hypot(Math.max(Math.abs(x) - length, 0), y) - r
 
@@ -82,7 +82,11 @@ const PIECES = [
   { id: 'star', category: 'angular', sdf: star(104, 46, 5) },
   { id: 'gear', category: 'mech', sdf: subtract(gear(94, 9), circle(30)) },
   { id: 'crescent', category: 'round', sdf: subtract(circle(96), translate(circle(82), 44, -18)) },
-  { id: 'blob', category: 'organic', sdf: union(translate(circle(62), -28, 10), translate(circle(74), 32, -8)) },
+  {
+    id: 'blob',
+    category: 'organic',
+    sdf: union(translate(circle(62), -28, 10), translate(circle(74), 32, -8)),
+  },
 ]
 
 /**

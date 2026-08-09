@@ -36,6 +36,7 @@ export type GameEvent =
   | { type: 'SUBMIT'; playerId: PlayerId; scene: Scene; entryId: string; now: number }
   | { type: 'VOTE'; playerId: PlayerId; entryId: string; now: number }
   | { type: 'TICK'; now: number }
+  | { type: 'RESTART'; playerId: PlayerId }
 
 export type Rejection = { code: ErrorCode; message: string }
 
@@ -59,6 +60,39 @@ export function reduce(state: RoomState, event: GameEvent): ReduceResult {
       return vote(state, event)
     case 'TICK':
       return { state: advanceIfDue(state, event.now) }
+    case 'RESTART':
+      return restart(state, event.playerId)
+  }
+}
+
+/**
+ * Back to the lobby with the same room and players, scores cleared. Keeps the
+ * room code alive so nobody has to rescan the QR code between games.
+ */
+function restart(state: RoomState, playerId: PlayerId): ReduceResult {
+  if (state.phase !== 'finalResults') {
+    return { state, rejection: { code: 'invalid', message: 'The game is not over yet.' } }
+  }
+  if (state.leaderId !== playerId) {
+    return { state, rejection: { code: 'invalid', message: 'Only the first player can restart.' } }
+  }
+
+  return {
+    state: {
+      ...state,
+      phase: 'lobby',
+      roundIndex: 0,
+      prompt: '',
+      promptPool: [],
+      submissions: [],
+      votes: {},
+      deadline: null,
+      lastRoundPoints: {},
+      lastRoundWinners: [],
+      // Players who dropped out during the last game don't carry into the new
+      // one, so a stale name isn't stuck on the lobby screen forever.
+      players: state.players.filter((p) => p.connected).map((p) => ({ ...p, score: 0 })),
+    },
   }
 }
 
@@ -71,11 +105,19 @@ function join(state: RoomState, event: Extract<GameEvent, { type: 'JOIN' }>): Re
     // Reclaiming a seat after a disconnect (screen lock, tab suspend, refresh).
     // The secret is what stops another client from stealing the seat.
     if (existing.secret !== event.secret) {
-      return { state, rejection: { code: 'bad-secret', message: 'That seat belongs to someone else.' } }
+      return {
+        state,
+        rejection: { code: 'bad-secret', message: 'That seat belongs to someone else.' },
+      }
     }
     const players = state.players.map((p) =>
       p.id === event.playerId
-        ? { ...p, connected: true, name: sanitizeName(event.name) || p.name, avatarId: event.avatarId }
+        ? {
+            ...p,
+            connected: true,
+            name: sanitizeName(event.name) || p.name,
+            avatarId: event.avatarId,
+          }
         : p,
     )
     return { state: withLeader({ ...state, players }) }
@@ -83,11 +125,17 @@ function join(state: RoomState, event: Extract<GameEvent, { type: 'JOIN' }>): Re
 
   // New players may only arrive in the lobby; a game in progress is closed.
   if (state.phase !== 'lobby') {
-    return { state, rejection: { code: 'game-in-progress', message: 'That game has already started.' } }
+    return {
+      state,
+      rejection: { code: 'game-in-progress', message: 'That game has already started.' },
+    }
   }
 
   if (state.players.length >= MAX_PLAYERS) {
-    return { state, rejection: { code: 'room-full', message: `This room is full (${MAX_PLAYERS} players).` } }
+    return {
+      state,
+      rejection: { code: 'room-full', message: `This room is full (${MAX_PLAYERS} players).` },
+    }
   }
 
   const name = sanitizeName(event.name)
@@ -124,10 +172,16 @@ function disconnect(state: RoomState, playerId: PlayerId): ReduceResult {
 
 function start(state: RoomState, playerId: PlayerId, now: number): ReduceResult {
   if (state.phase !== 'lobby') {
-    return { state, rejection: { code: 'game-in-progress', message: 'The game is already running.' } }
+    return {
+      state,
+      rejection: { code: 'game-in-progress', message: 'The game is already running.' },
+    }
   }
   if (state.leaderId !== playerId) {
-    return { state, rejection: { code: 'invalid', message: 'Only the first player can start the game.' } }
+    return {
+      state,
+      rejection: { code: 'invalid', message: 'Only the first player can start the game.' },
+    }
   }
   if (connectedCount(state) < MIN_PLAYERS_TO_START) {
     return {
@@ -156,7 +210,10 @@ function submit(state: RoomState, event: Extract<GameEvent, { type: 'SUBMIT' }>)
     ? state.submissions.map((entry) =>
         entry.playerId === event.playerId ? { ...entry, scene: event.scene } : entry,
       )
-    : [...state.submissions, { playerId: event.playerId, entryId: event.entryId, scene: event.scene }]
+    : [
+        ...state.submissions,
+        { playerId: event.playerId, entryId: event.entryId, scene: event.scene },
+      ]
 
   return { state: advanceIfDue({ ...state, submissions }, event.now) }
 }
@@ -186,19 +243,30 @@ function vote(state: RoomState, event: Extract<GameEvent, { type: 'VOTE' }>): Re
 function advanceIfDue(state: RoomState, now: number): RoomState {
   const expired = state.deadline !== null && now >= state.deadline
 
+  const active = activePlayers(state)
+  /**
+   * "Everyone is done" is only meaningful when the room is actually assembled.
+   * Two cases make it vacuously true and would race through whole rounds:
+   * nobody is connected at all, or the room is still recovering from a host
+   * restart and only the first phone back has reported in. In both, the clock
+   * is the only thing allowed to advance a phase.
+   */
+  const notAssembled =
+    active.length === 0 || (state.recoveringUntil !== null && now < state.recoveringUntil)
+
   switch (state.phase) {
     case 'building': {
-      const waiting = activePlayers(state).filter(
+      const waiting = active.filter(
         (player) => !state.submissions.some((entry) => entry.playerId === player.id),
       )
-      if (!expired && waiting.length > 0) return state
+      if (!expired && (notAssembled || waiting.length > 0)) return state
       return beginVoting(state, now)
     }
 
     case 'voting': {
       // Players who submitted nothing still vote; players who left do not.
-      const waiting = activePlayers(state).filter((player) => !(player.id in state.votes))
-      if (!expired && waiting.length > 0) return state
+      const waiting = active.filter((player) => !(player.id in state.votes))
+      if (!expired && (notAssembled || waiting.length > 0)) return state
       return scoreRound(state, now)
     }
 

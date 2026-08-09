@@ -4,7 +4,13 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { type Point, cutFromLine } from '../render/clip'
 import { PALETTE, paletteColor } from '../render/palette'
 import { SceneView } from '../render/SceneView'
-import { MAX_CUTS_PER_PIECE, MAX_PIECES, type Placed, type Scene, emptyScene } from '../shared/scene'
+import {
+  MAX_CUTS_PER_PIECE,
+  MAX_PIECES,
+  type Placed,
+  type Scene,
+  emptyScene,
+} from '../shared/scene'
 import { PieceTray } from './PieceTray'
 import { SelectionTransformer } from './SelectionTransformer'
 import { SliceOverlay } from './SliceOverlay'
@@ -197,9 +203,7 @@ export function Editor({ initialScene, onChange }: Props) {
         <div className="swatches">
           {PALETTE.map((color, index) => {
             const active =
-              paintTarget === 'piece'
-                ? (selected?.tint ?? 0) === index
-                : (scene.bg ?? 0) === index
+              paintTarget === 'piece' ? (selected?.tint ?? 0) === index : (scene.bg ?? 0) === index
             return (
               <button
                 key={color}
@@ -220,7 +224,9 @@ export function Editor({ initialScene, onChange }: Props) {
       </div>
 
       <PieceTray onAdd={handleAdd} disabled={full} />
-      {full && <p className="editor__hint">That is all {MAX_PIECES} pieces — delete one to add another.</p>}
+      {full && (
+        <p className="editor__hint">That is all {MAX_PIECES} pieces — delete one to add another.</p>
+      )}
     </div>
   )
 }
@@ -343,4 +349,3 @@ function useSliceGesture({
 
   return active ? memo : {}
 }
-

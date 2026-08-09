@@ -24,7 +24,10 @@ export function EditorPlayground() {
   return (
     <>
       <Editor onChange={setScene} />
-      <p className="muted" style={{ textAlign: 'center', fontSize: '0.7rem', padding: '0 8px 8px' }}>
+      <p
+        className="muted"
+        style={{ textAlign: 'center', fontSize: '0.7rem', padding: '0 8px 8px' }}
+      >
         {scene?.pieces.length ?? 0} {scene?.pieces.length === 1 ? 'piece' : 'pieces'} ·{' '}
         {JSON.stringify(scene).length} bytes on the wire
       </p>

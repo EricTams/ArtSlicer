@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { AVATARS, getAvatar } from '../shared/avatars'
-import { MAX_NAME_LENGTH, MIN_PLAYERS_TO_START, sanitizeName } from '../shared/gameState'
+import {
+  MAX_NAME_LENGTH,
+  MIN_PLAYERS_TO_START,
+  type PublicPlayer,
+  sanitizeName,
+} from '../shared/gameState'
 import { isValidRoomCode, normalizeRoomCode } from '../shared/roomCode'
 import { usePiecesLoaded } from '../editor/usePiecesLoaded'
 import { BuildScreen } from './BuildScreen'
@@ -36,7 +41,13 @@ export function ClientApp() {
   return <Room roomCode={roomCode} identity={identity} />
 }
 
-function Room({ roomCode, identity }: { roomCode: string; identity: ReturnType<typeof loadIdentity> }) {
+function Room({
+  roomCode,
+  identity,
+}: {
+  roomCode: string
+  identity: ReturnType<typeof loadIdentity>
+}) {
   const room = useClientRoom(roomCode, identity)
   const [name, setName] = useState(identity.name)
   const [avatarId, setAvatarId] = useState(identity.avatarId || AVATARS[0]!.id)
@@ -123,11 +134,7 @@ function Room({ roomCode, identity }: { roomCode: string; identity: ReturnType<t
             room.join(trimmed, avatarId)
           }}
         >
-          {room.status === 'connecting'
-            ? 'Connecting…'
-            : submitted
-              ? 'Joining…'
-              : 'Join game'}
+          {room.status === 'connecting' ? 'Connecting…' : submitted ? 'Joining…' : 'Join game'}
         </button>
       </div>
     )
@@ -144,7 +151,10 @@ function Room({ roomCode, identity }: { roomCode: string; identity: ReturnType<t
   return (
     <div className="screen screen--center">
       <div className="stack" style={{ alignItems: 'center', width: '100%', maxWidth: 380 }}>
-        <span className="playerchip__avatar playerchip__avatar--big" style={{ background: avatar.color }}>
+        <span
+          className="playerchip__avatar playerchip__avatar--big"
+          style={{ background: avatar.color }}
+        >
           {avatar.glyph}
         </span>
         <h2>{me!.name}</h2>
@@ -245,16 +255,33 @@ function LookUp({
   return (
     <div className="screen screen--center">
       <div className="stack" style={{ alignItems: 'center' }}>
-        <span className="playerchip__avatar playerchip__avatar--big" style={{ background: avatarColor }}>
+        <span
+          className="playerchip__avatar playerchip__avatar--big"
+          style={{ background: avatarColor }}
+        >
           {glyph}
         </span>
         <h2>{final ? 'Game over' : 'Look at the big screen'}</h2>
         {!final && roundPoints > 0 && <p className="bigscore">+{roundPoints}</p>}
-        {room.winners.includes(room.you ?? '') && !final && <p className="tagline">You won the round!</p>}
-        <p className="muted">
-          {me ? `${me.score} point${me.score === 1 ? '' : 's'}` : ''}
-        </p>
+        {room.winners.includes(room.you ?? '') && !final && (
+          <p className="tagline">You won the round!</p>
+        )}
+        <p className="muted">{me ? `${me.score} point${me.score === 1 ? '' : 's'}` : ''}</p>
+
+        {/* Only the leader gets this, matching who may start a game. */}
+        {room.canRestart && (
+          <button className="btn btn--wide" onClick={room.restart}>
+            Play again
+          </button>
+        )}
+        {final && !room.canRestart && (
+          <p className="muted">Waiting for {leaderName(room.players)} to start another game…</p>
+        )}
       </div>
     </div>
   )
+}
+
+function leaderName(players: PublicPlayer[]): string {
+  return players.find((player) => player.isLeader)?.name ?? 'the first player'
 }

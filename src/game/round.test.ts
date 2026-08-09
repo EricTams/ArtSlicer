@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { BUILD_MS, RESULTS_MS, type RoomState, VOTE_MS, createRoom } from '../shared/gameState'
+import {
+  BUILD_MS,
+  RECOVERY_GRACE_MS,
+  RESULTS_MS,
+  type RoomState,
+  VOTE_MS,
+  createRoom,
+} from '../shared/gameState'
 import { emptyScene } from '../shared/scene'
 import { POINTS_PER_VOTE, WINNER_BONUS } from './scoring'
 import { ballotFor, reduce } from './reducer'
@@ -194,8 +201,18 @@ describe('advancing between rounds', () => {
   function toResults(ids: string[]): RoomState {
     let state = started(ids)
     state = submitAll(state, ids)
-    state = reduce(state, { type: 'VOTE', playerId: ids[0]!, entryId: `e-${ids[1]}`, now: T0 }).state
-    state = reduce(state, { type: 'VOTE', playerId: ids[1]!, entryId: `e-${ids[0]}`, now: T0 }).state
+    state = reduce(state, {
+      type: 'VOTE',
+      playerId: ids[0]!,
+      entryId: `e-${ids[1]}`,
+      now: T0,
+    }).state
+    state = reduce(state, {
+      type: 'VOTE',
+      playerId: ids[1]!,
+      entryId: `e-${ids[0]}`,
+      now: T0,
+    }).state
     return state
   }
 
@@ -232,5 +249,162 @@ describe('advancing between rounds', () => {
     state = reduce(state, { type: 'TICK', now: state.deadline! }).state
     const after = reduce(state, { type: 'TICK', now: T0 + 10 * RESULTS_MS }).state
     expect(after).toBe(state)
+  })
+})
+
+describe('playing again', () => {
+  function finished(): RoomState {
+    let state = started(['a', 'b'])
+    state = submitAll(state, ['a', 'b'])
+    state = reduce(state, { type: 'VOTE', playerId: 'a', entryId: 'e-b', now: T0 }).state
+    state = reduce(state, { type: 'VOTE', playerId: 'b', entryId: 'e-a', now: T0 }).state
+    state = { ...state, roundIndex: state.totalRounds - 1 }
+    return reduce(state, { type: 'TICK', now: state.deadline! }).state
+  }
+
+  it('returns to the lobby with scores cleared and the room code kept', () => {
+    const state = finished()
+    expect(state.phase).toBe('finalResults')
+
+    const again = reduce(state, { type: 'RESTART', playerId: 'a' }).state
+    expect(again.phase).toBe('lobby')
+    expect(again.roomCode).toBe(state.roomCode)
+    expect(again.roundIndex).toBe(0)
+    expect(again.submissions).toEqual([])
+    expect(again.players.every((p) => p.score === 0)).toBe(true)
+  })
+
+  it('only honors the leader', () => {
+    const result = reduce(finished(), { type: 'RESTART', playerId: 'b' })
+    expect(result.rejection?.code).toBe('invalid')
+    expect(result.state.phase).toBe('finalResults')
+  })
+
+  it('refuses to restart a game that is still running', () => {
+    const result = reduce(started(['a', 'b']), { type: 'RESTART', playerId: 'a' })
+    expect(result.rejection?.code).toBe('invalid')
+  })
+
+  it('drops players who left rather than stranding their name in the lobby', () => {
+    let state = finished()
+    state = reduce(state, { type: 'DISCONNECT', playerId: 'b' }).state
+    const again = reduce(state, { type: 'RESTART', playerId: 'a' }).state
+    expect(again.players.map((p) => p.id)).toEqual(['a'])
+  })
+})
+
+describe('when the room briefly empties', () => {
+  it('does not race through the build phase with nobody connected', () => {
+    let state = started(['a', 'b'])
+    state = reduce(state, { type: 'DISCONNECT', playerId: 'a' }).state
+    state = reduce(state, { type: 'DISCONNECT', playerId: 'b' }).state
+
+    // "Everyone has submitted" is vacuously true here; only the clock should
+    // be able to end the round.
+    state = reduce(state, { type: 'TICK', now: T0 + 1000 }).state
+    expect(state.phase).toBe('building')
+    expect(state.roundIndex).toBe(0)
+  })
+
+  it('does not race through voting with nobody connected', () => {
+    let state = started(['a', 'b'])
+    state = submitAll(state, ['a', 'b'])
+    expect(state.phase).toBe('voting')
+
+    state = reduce(state, { type: 'DISCONNECT', playerId: 'a' }).state
+    state = reduce(state, { type: 'DISCONNECT', playerId: 'b' }).state
+    state = reduce(state, { type: 'TICK', now: T0 + 1000 }).state
+    expect(state.phase).toBe('voting')
+  })
+
+  it('still ends the phase when the clock runs out', () => {
+    let state = started(['a', 'b'])
+    state = reduce(state, { type: 'DISCONNECT', playerId: 'a' }).state
+    state = reduce(state, { type: 'DISCONNECT', playerId: 'b' }).state
+    state = reduce(state, { type: 'TICK', now: T0 + BUILD_MS }).state
+    expect(state.phase).toBe('roundResults')
+  })
+
+  it('resumes normally once a player reconnects', () => {
+    let state = started(['a', 'b'])
+    state = reduce(state, { type: 'DISCONNECT', playerId: 'a' }).state
+    state = reduce(state, { type: 'DISCONNECT', playerId: 'b' }).state
+    state = reduce(state, {
+      type: 'JOIN',
+      playerId: 'a',
+      secret: 's-a',
+      name: 'a',
+      avatarId: 'fox',
+      now: T0,
+    }).state
+
+    expect(state.phase).toBe('building')
+    state = submitAll(state, ['a'])
+    // Only 'a' is here, so their submission completes the phase.
+    expect(state.phase).toBe('roundResults')
+  })
+})
+
+describe('recovering from a host restart', () => {
+  /** A room mid-build with one entry already in, as a resume would restore it. */
+  function resumed(now: number): RoomState {
+    let state = started(['a', 'b'])
+    state = submitAll(state, ['a'])
+    return {
+      ...state,
+      players: state.players.map((p) => ({ ...p, connected: false })),
+      recoveringUntil: now + RECOVERY_GRACE_MS,
+    }
+  }
+
+  it('does not let the first phone back end the round for everyone', () => {
+    let state = resumed(T0)
+    // Alice reconnects; she already submitted before the crash, so without the
+    // grace window "everyone here is done" would be true and end the round.
+    state = reduce(state, {
+      type: 'JOIN',
+      playerId: 'a',
+      secret: 's-a',
+      name: 'a',
+      avatarId: 'fox',
+      now: T0,
+    }).state
+    state = reduce(state, { type: 'TICK', now: T0 + 1000 }).state
+
+    expect(state.phase).toBe('building')
+    expect(state.roundIndex).toBe(0)
+  })
+
+  it('resumes normal early-advance once the grace window passes', () => {
+    let state = resumed(T0)
+    state = reduce(state, {
+      type: 'JOIN',
+      playerId: 'a',
+      secret: 's-a',
+      name: 'a',
+      avatarId: 'fox',
+      now: T0,
+    }).state
+
+    // Bob never came back; after the window, the room proceeds without him.
+    state = reduce(state, { type: 'TICK', now: T0 + RECOVERY_GRACE_MS + 1 }).state
+    expect(state.phase).not.toBe('building')
+  })
+
+  it('still advances everyone normally once they are all back', () => {
+    let state = resumed(T0)
+    for (const id of ['a', 'b']) {
+      state = reduce(state, {
+        type: 'JOIN',
+        playerId: id,
+        secret: `s-${id}`,
+        name: id,
+        avatarId: 'fox',
+        now: T0,
+      }).state
+    }
+    // Bob submits after the window; both are in, so voting opens.
+    state = submitAll(state, ['b'], T0 + RECOVERY_GRACE_MS + 1)
+    expect(state.phase).toBe('voting')
   })
 })
