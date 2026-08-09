@@ -288,3 +288,205 @@ h3 {
 .avatarbtn:active {
   transform: scale(0.95);
 }
+
+/* ---------- editor ---------- */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 10px;
+  padding: 8px 8px max(8px, env(safe-area-inset-bottom));
+}
+
+.editor__canvas {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  /* The canvas owns every gesture inside it; the page must not scroll or zoom. */
+  touch-action: none;
+}
+
+.editor__hint {
+  margin: 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--warn);
+}
+
+.editor__tools {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.tool {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 8px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  /* Apple's 44px minimum: these are hit with a thumb, often in a hurry. */
+  min-height: 52px;
+}
+
+.tool--on {
+  background: var(--accent);
+  color: #1a0512;
+  border-color: var(--accent);
+}
+
+.tool:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.tool__glyph {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.tool__label {
+  font-size: 0.6rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.editor__paint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.editor__painttabs {
+  display: flex;
+  gap: 6px;
+}
+
+.chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chip--on {
+  background: var(--accent-2);
+  color: var(--bg);
+  border-color: var(--accent-2);
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
+  gap: 6px;
+}
+
+.swatch {
+  appearance: none;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  border: 3px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.swatch--on {
+  border-color: var(--text);
+}
+
+.swatch:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.tray {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tray__tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tray__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tray__tab {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.tray__tab--on {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.tray__items {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.tray__item {
+  appearance: none;
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  /* Sprites are near-white by design, so the chip is dark for contrast. */
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  padding: 6px;
+  display: grid;
+  place-items: center;
+}
+
+.tray__item:active:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.tray__item:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.tray__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}

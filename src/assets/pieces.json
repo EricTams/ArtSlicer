@@ -1,0 +1,86 @@
+[
+  {
+    "id": "diamond",
+    "category": "angular",
+    "src": "pieces/angular/diamond.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "hexagon",
+    "category": "angular",
+    "src": "pieces/angular/hexagon.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "star",
+    "category": "angular",
+    "src": "pieces/angular/star.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "triangle",
+    "category": "angular",
+    "src": "pieces/angular/triangle.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "bar",
+    "category": "block",
+    "src": "pieces/block/bar.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "plank",
+    "category": "block",
+    "src": "pieces/block/plank.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "gear",
+    "category": "mech",
+    "src": "pieces/mech/gear.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "blob",
+    "category": "organic",
+    "src": "pieces/organic/blob.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "capsule",
+    "category": "round",
+    "src": "pieces/round/capsule.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "crescent",
+    "category": "round",
+    "src": "pieces/round/crescent.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "disc",
+    "category": "round",
+    "src": "pieces/round/disc.png",
+    "width": 256,
+    "height": 256
+  },
+  {
+    "id": "ring",
+    "category": "round",
+    "src": "pieces/round/ring.png",
+    "width": 256,
+    "height": 256
+  }
+]

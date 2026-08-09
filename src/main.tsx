@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import { ClientApp } from './client/ClientApp'
+import { EditorPlayground } from './editor/EditorPlayground'
 import { HostApp } from './host/HostApp'
 import './styles.css'
 
@@ -18,6 +19,8 @@ createRoot(root).render(
         <Route path="/" element={<HostApp />} />
         <Route path="/join/:code" element={<ClientApp />} />
         <Route path="/join" element={<ClientApp />} />
+        {/* Standalone editor for developing the build tools without a lobby. */}
+        <Route path="/editor" element={<EditorPlayground />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>
