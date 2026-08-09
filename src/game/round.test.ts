@@ -91,13 +91,13 @@ describe('building', () => {
     state = reduce(state, {
       type: 'SUBMIT',
       playerId: 'a',
-      scene: { pieces: [], bg: 3 },
+      scene: { pieces: [], bg: '#336699' },
       entryId: 'ignored',
       now: T0,
     }).state
     expect(state.submissions).toHaveLength(1)
     expect(state.submissions[0]!.entryId).toBe('e-a')
-    expect(state.submissions[0]!.scene.bg).toBe(3)
+    expect(state.submissions[0]!.scene.bg).toBe('#336699')
   })
 
   it('refuses a submission once the phase has moved on', () => {

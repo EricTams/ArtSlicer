@@ -289,208 +289,6 @@ h3 {
   transform: scale(0.95);
 }
 
-/* ---------- editor ---------- */
-
-.editor {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 10px;
-  padding: 8px 8px max(8px, env(safe-area-inset-bottom));
-}
-
-.editor__canvas {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  place-items: center;
-  /* The canvas owns every gesture inside it; the page must not scroll or zoom. */
-  touch-action: none;
-}
-
-.editor__hint {
-  margin: 0;
-  text-align: center;
-  font-size: 0.85rem;
-  color: var(--warn);
-}
-
-.editor__tools {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-}
-
-.tool {
-  appearance: none;
-  border: 1px solid var(--line);
-  background: var(--bg-raised);
-  color: var(--text);
-  border-radius: 12px;
-  padding: 8px 2px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  cursor: pointer;
-  font-family: inherit;
-  /* Apple's 44px minimum: these are hit with a thumb, often in a hurry. */
-  min-height: 52px;
-}
-
-.tool--on {
-  background: var(--accent);
-  color: #1a0512;
-  border-color: var(--accent);
-}
-
-.tool:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.tool__glyph {
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
-.tool__label {
-  font-size: 0.6rem;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.editor__paint {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.editor__painttabs {
-  display: flex;
-  gap: 6px;
-}
-
-.chip {
-  appearance: none;
-  border: 1px solid var(--line);
-  background: var(--bg-raised);
-  color: var(--text-dim);
-  border-radius: 999px;
-  padding: 6px 14px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.chip--on {
-  background: var(--accent-2);
-  color: var(--bg);
-  border-color: var(--accent-2);
-}
-
-.swatches {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
-  gap: 6px;
-}
-
-.swatch {
-  appearance: none;
-  aspect-ratio: 1;
-  border-radius: 10px;
-  border: 3px solid transparent;
-  cursor: pointer;
-  padding: 0;
-}
-
-.swatch--on {
-  border-color: var(--text);
-}
-
-.swatch:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.tray {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.tray__tabs {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.tray__tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.tray__tab {
-  appearance: none;
-  border: 1px solid var(--line);
-  background: var(--bg-raised);
-  color: var(--text-dim);
-  border-radius: 999px;
-  padding: 6px 14px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  text-transform: capitalize;
-}
-
-.tray__tab--on {
-  background: var(--text);
-  color: var(--bg);
-  border-color: var(--text);
-}
-
-.tray__items {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
-}
-
-.tray__item {
-  appearance: none;
-  flex: none;
-  width: 64px;
-  height: 64px;
-  border-radius: 12px;
-  /* Sprites are near-white by design, so the chip is dark for contrast. */
-  background: var(--bg-sunken);
-  border: 1px solid var(--line);
-  cursor: pointer;
-  padding: 6px;
-  display: grid;
-  place-items: center;
-}
-
-.tray__item:active:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.tray__item:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.tray__item img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  pointer-events: none;
-}
-
 /* ---------- rounds ---------- */
 
 .countdown {
@@ -563,7 +361,7 @@ h3 {
   display: flex;
 }
 
-.build__editor .editor {
+.build__editor .make {
   padding: 0;
   flex: 1;
 }
@@ -823,4 +621,449 @@ h3 {
     height: 34px;
     font-size: 1.1rem;
   }
+}
+
+/* ---------- make screen (phone-first build) ---------- */
+
+.make {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 10px;
+  padding: 8px 10px max(10px, env(safe-area-inset-bottom));
+}
+
+.make__canvas {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  /* The canvas owns every gesture inside it; the page must not scroll or zoom. */
+  touch-action: none;
+}
+
+.make__hint {
+  margin: 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  min-height: 2.4em;
+}
+
+.make__tools {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.bigtool {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 10px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  /* Thumb-sized: these are the primary controls now. */
+  min-height: 64px;
+}
+
+.bigtool:active {
+  background: var(--accent);
+  color: #1a0512;
+}
+
+.bigtool__glyph {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.bigtool__label {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.make__bottom {
+  display: flex;
+  gap: 8px;
+}
+
+.make__undo {
+  flex: none;
+  width: 64px;
+  font-size: 1.4rem;
+  padding: 0;
+}
+
+.make__bin {
+  flex: 1;
+}
+
+/* ---------- full-screen tools ---------- */
+
+/* Tools cover the canvas rather than replacing it, so the Konva stage and its
+   gesture listeners survive a trip into a tool and back. */
+.tool2 {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.tool2__head {
+  display: grid;
+  grid-template-columns: 56px 1fr 88px;
+  align-items: center;
+  gap: 8px;
+  padding: max(8px, env(safe-area-inset-top)) 10px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tool2__title {
+  text-align: center;
+  font-size: 1.2rem;
+}
+
+.tool2__back,
+.tool2__done {
+  appearance: none;
+  border: none;
+  border-radius: 12px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.tool2__back {
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 1.3rem;
+}
+
+.tool2__done {
+  background: var(--accent);
+  color: #1a0512;
+  font-size: 1rem;
+}
+
+.tool2__done--ghost {
+  background: none;
+}
+
+.tool2__hint {
+  margin: 0;
+  padding: 10px 16px 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.tool2__hint--warn {
+  color: var(--warn);
+}
+
+.tool2__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- parts bin ---------- */
+
+.bin__tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 12px 12px 0;
+  scrollbar-width: none;
+}
+
+.bin__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.bin__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.bin__item {
+  appearance: none;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  /* Sprites are near-white by design, so the tile is dark for contrast. */
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 0.65rem;
+  text-transform: capitalize;
+}
+
+.bin__item:active:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.bin__item:disabled {
+  opacity: 0.3;
+}
+
+.bin__item img {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* ---------- colour tool ---------- */
+
+.paint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+}
+
+.paint__stage {
+  background: #ffffff;
+  border-radius: 14px;
+  overflow: hidden;
+  flex: none;
+}
+
+.paint__tubes {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.tube {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  /* The whole tube is the drag handle, so it must not scroll the page. */
+  touch-action: none;
+}
+
+.tube__body {
+  width: 100%;
+  height: 68px;
+  border-radius: 8px 8px 4px 4px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  position: relative;
+  transition: transform 0.1s ease;
+}
+
+.tube--on .tube__body {
+  transform: scaleY(0.88);
+}
+
+.tube__cap {
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 40%;
+  height: 10px;
+  transform: translateX(-50%);
+  border-radius: 0 0 4px 4px;
+  background: var(--text-dim);
+}
+
+.tube__label {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  text-transform: capitalize;
+  margin-top: 6px;
+}
+
+.paint__jarrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.jar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.jar__glass {
+  width: 70px;
+  height: 84px;
+  border: 3px solid var(--line);
+  border-radius: 6px 6px 12px 12px;
+  background: var(--bg-sunken);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.jar__paint {
+  width: 100%;
+  transition: height 0.12s ease, background 0.2s ease;
+}
+
+.jar__label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.paint__empty {
+  min-height: 48px;
+  font-size: 0.9rem;
+}
+
+.spray {
+  appearance: none;
+  width: 100%;
+  max-width: 420px;
+  border: none;
+  border-radius: 16px;
+  min-height: 76px;
+  font-family: inherit;
+  font-size: 1.15rem;
+  font-weight: 800;
+  cursor: pointer;
+  color: #1a0512;
+  background: var(--spray-color, var(--accent));
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.25);
+  touch-action: none;
+}
+
+.spray--on {
+  transform: scale(0.98);
+  box-shadow: inset 0 0 0 6px rgba(0, 0, 0, 0.4);
+}
+
+.spray:disabled {
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ---------- squish tool ---------- */
+
+.squish {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 12px;
+}
+
+.squish__stage {
+  position: relative;
+  background: #ffffff;
+  border-radius: 14px;
+  overflow: hidden;
+  flex: none;
+  touch-action: none;
+}
+
+.squish__art {
+  position: absolute;
+  inset: 0;
+}
+
+.jaw {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 26px;
+  background: linear-gradient(var(--text-dim), #5b5570);
+  z-index: 2;
+  transition: transform 0.05s linear;
+}
+
+.jaw__teeth {
+  height: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.35) 0 6px,
+    transparent 6px 14px
+  );
+}
+
+.squish__spin {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 420px;
+  font-size: 0.8rem;
+}
+
+.squish__spin input {
+  width: 100%;
+  height: 44px;
+}
+
+/* ---------- slice tool ---------- */
+
+.slice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 12px;
+}
+
+.slice__stage {
+  position: relative;
+  background: #ffffff;
+  border-radius: 14px;
+  overflow: hidden;
+  flex: none;
+  touch-action: none;
+}
+
+.slice__art {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.03s linear;
+}
+
+.slice__flick {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.slice .btn {
+  width: 100%;
+  max-width: 420px;
 }

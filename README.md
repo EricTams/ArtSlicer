@@ -1,9 +1,14 @@
 # ArtSlicer
 
 A Jackbox-style party game. The host screen shows a QR code, everyone joins from
-their phone, and each round you get a prompt and a pile of junk — scale it, slice
-it, colourize it, and arrange it into something that vaguely resembles the
-prompt. Then everyone votes on whose attempt was best.
+their phone, and each round you get a prompt and a pile of junk to arrange into
+something that vaguely resembles it. Then everyone votes on whose attempt was
+best.
+
+The tools are physical rather than abstract: you **mix paint** by squeezing
+tubes into a jar and holding a spray button, **squish** a part by aiming it and
+slamming crusher jaws shut, and **slice** it by tossing it in the air and
+flicking your finger through it.
 
 **Play:** https://erictams.github.io/ArtSlicer/
 
@@ -75,20 +80,39 @@ space — a busy composition is a couple hundred bytes rather than a screenshot.
 Because the host runs the same bundle, it already has every sprite and re-renders
 the scene at full laptop resolution instead of upscaling a phone-sized image.
 
-### Slicing is convex clipping
+### The build screen is a stack of single-purpose tools
 
-Each cut is a half-plane stored in the piece's local space, and the visible shape
-is the piece's rectangle trimmed against all of them. Because half-plane
-intersections are always convex, a small Sutherland–Hodgman pass is exact.
-Storing cuts locally means they follow the piece when it is later moved, scaled,
-or rotated.
+The canvas handles only arranging — drag to move, pinch to size and turn. Tap a
+piece and each transformation gets the whole screen to itself, which is what lets
+each one be a physical action instead of a row of sliders. Tools render as
+overlays rather than replacing the canvas, so the Konva stage and its gesture
+listeners survive a trip into a tool and back.
+
+### Slicing splits a piece in two
+
+A flick is mapped back through the piece's full transform into its own
+coordinates, then stored as a half-plane; the visible shape is the piece's
+rectangle trimmed against every cut it carries. Half-plane intersections are
+always convex, so a small Sutherland–Hodgman pass is exact. One piece becomes
+two, taking opposite sides of the cut, which makes slicing a way to *create*
+parts rather than only trim them.
+
+### Squashing is stored as an axis, not a scale
+
+A piece springs back upright after being crushed, so a diagonal squash cannot be
+expressed as `scaleX`/`scaleY`. Each squash is `{angle, factor}` in the piece's
+own frame, rendered by conjugating a scale by that angle, and successive squashes
+compose by nesting. Angle 0 crushes vertically — a convention pinned down by
+tests, because getting it backwards silently mirrors the deformation.
 
 ### Tinting
 
-Konva's per-node filters are too slow on a phone, so each (sprite, colour) pair
-is composited once into a cached canvas and shared by every instance. The blend
-is `multiply`, which preserves the sprite's shading instead of flattening it to a
-silhouette.
+Colours are mixed by hand, so any spray can produce a new one. Each (sprite,
+colour, strength) combination is composited once into a cached canvas — quantised
+so near-identical shades share an entry, and bounded by an LRU so a long game
+cannot accumulate hundreds of them. Konva's per-node filters were far too slow on
+a phone. The blend is `multiply` at the sprayed strength, which preserves the
+sprite's shading instead of flattening it to a silhouette.
 
 > **This constrains the art.** Multiply can only darken, so source PNGs must be
 > drawn **light** — near-white with soft grey shading. See below.
@@ -142,7 +166,7 @@ src/
   game/     reducer, scoring, prompts, persistence — pure, no React or PeerJS
   net/      WebRTC transport behind an interface
   render/   SceneView (the single renderer), tint cache, clip geometry
-  editor/   canvas, piece tray, toolbar, slice gesture
+  editor/   canvas gestures, parts bin, and the colour/squish/slice tools
   host/     host device: lobby, shared-screen views, loopback for the local player
   client/   the player UI, used by remote phones and by the host when it plays
 ```

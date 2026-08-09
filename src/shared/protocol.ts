@@ -7,7 +7,7 @@ import type { Scene } from './scene'
  * today's host; the host checks this and tells them to refresh rather than
  * failing in some confusing downstream way.
  */
-export const PROTOCOL_VERSION = 2
+export const PROTOCOL_VERSION = 3
 
 /**
  * Client -> Host. Every message is an *intent*, never a fact: the client asks

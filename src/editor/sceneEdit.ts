@@ -1,32 +1,40 @@
-import type { Cut } from '../shared/scene'
+import { parseHex, toHex } from '../render/tint'
 import {
-  DESIGN_SIZE,
+  type Cut,
   MAX_CUTS_PER_PIECE,
   MAX_PIECES,
+  MAX_SCALE,
+  MAX_SQUASHES_PER_PIECE,
+  MIN_SCALE,
   type Placed,
   type Scene,
+  type Squash,
+  type Tint,
   topZ,
 } from '../shared/scene'
-import { PALETTE } from '../render/palette'
+import { invertCut } from '../render/clip'
 
 /**
  * Pure scene mutations. Keeping these out of React makes the editor's rules —
- * piece caps, layering, cut limits — testable without mounting a canvas.
- * Every function returns a new Scene, which is also what makes undo trivial.
+ * piece caps, layering, squash and cut limits, how paint layers — testable
+ * without mounting a canvas. Every function returns a new Scene, which is also
+ * what makes undo trivial.
  */
 
-export function addPiece(scene: Scene, pieceId: string, id: string): Scene {
+export function addPiece(
+  scene: Scene,
+  pieceId: string,
+  id: string,
+  at?: { x: number; y: number },
+): Scene {
   if (scene.pieces.length >= MAX_PIECES) return scene
 
   const piece: Placed = {
     id,
     pieceId,
-    // Land in the middle at a size that reads on a phone without covering
-    // everything already placed.
-    x: DESIGN_SIZE / 2,
-    y: DESIGN_SIZE / 2,
-    scaleX: 1,
-    scaleY: 1,
+    x: at?.x ?? 500,
+    y: at?.y ?? 500,
+    scale: 1,
     rotation: 0,
     z: topZ(scene) + 1,
   }
@@ -44,6 +52,18 @@ export function removePiece(scene: Scene, id: string): Scene {
   return { ...scene, pieces: scene.pieces.filter((piece) => piece.id !== id) }
 }
 
+export function movePiece(scene: Scene, id: string, x: number, y: number): Scene {
+  return updatePiece(scene, id, { x, y })
+}
+
+/** Pinching gives both at once, so they are applied together. */
+export function transformPiece(scene: Scene, id: string, scale: number, rotation: number): Scene {
+  return updatePiece(scene, id, {
+    scale: Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale)),
+    rotation,
+  })
+}
+
 export function bringToFront(scene: Scene, id: string): Scene {
   return updatePiece(scene, id, { z: topZ(scene) + 1 })
 }
@@ -54,43 +74,108 @@ export function sendToBack(scene: Scene, id: string): Scene {
 }
 
 export function flipPiece(scene: Scene, id: string): Scene {
-  const piece = scene.pieces.find((p) => p.id === id)
+  const piece = find(scene, id)
   if (!piece) return scene
   return updatePiece(scene, id, { flipX: !piece.flipX })
 }
 
-export function cyclePieceTint(scene: Scene, id: string, delta: number): Scene {
-  const piece = scene.pieces.find((p) => p.id === id)
-  if (!piece) return scene
-  const current = piece.tint ?? 0
-  const next = (current + delta + PALETTE.length) % PALETTE.length
-  return updatePiece(scene, id, { tint: next })
+/**
+ * Paint layers rather than replaces: spraying a second colour blends it into
+ * whatever is already on the piece, weighted by how much of each was applied.
+ * Spraying the same colour twice simply makes it stronger.
+ */
+export function sprayPiece(scene: Scene, id: string, color: string, delta: number): Scene {
+  const piece = find(scene, id)
+  if (!piece || delta <= 0) return scene
+
+  const existing = piece.tint
+  if (!existing || existing.amount <= 0) {
+    return updatePiece(scene, id, { tint: { color, amount: Math.min(1, delta) } })
+  }
+
+  const total = existing.amount + delta
+  const [r1, g1, b1] = parseHex(existing.color)
+  const [r2, g2, b2] = parseHex(color)
+  const mix = (a: number, b: number): number => (a * existing.amount + b * delta) / total
+
+  const blended: Tint = {
+    color: toHex(mix(r1, r2), mix(g1, g2), mix(b1, b2)),
+    amount: Math.min(1, total),
+  }
+  return updatePiece(scene, id, { tint: blended })
 }
 
-export function setPieceTint(scene: Scene, id: string, tint: number): Scene {
-  return updatePiece(scene, id, { tint })
-}
-
-export function addCut(scene: Scene, id: string, cut: Cut): Scene {
-  const piece = scene.pieces.find((p) => p.id === id)
-  if (!piece) return scene
-
-  const cuts = [...(piece.cuts ?? []), cut]
-  // Each cut is another clip edge evaluated every frame; cap it.
-  if (cuts.length > MAX_CUTS_PER_PIECE) return scene
-  return updatePiece(scene, id, { cuts })
-}
-
-export function clearCuts(scene: Scene, id: string): Scene {
-  const piece = scene.pieces.find((p) => p.id === id)
-  if (!piece?.cuts?.length) return scene
+export function clearTint(scene: Scene, id: string): Scene {
+  const piece = find(scene, id)
+  if (!piece?.tint) return scene
   const next = { ...piece }
-  delete next.cuts
-  return { ...scene, pieces: scene.pieces.map((p) => (p.id === id ? next : p)) }
+  delete next.tint
+  return replace(scene, next)
 }
 
-export function setBackground(scene: Scene, bg: number): Scene {
-  return { ...scene, bg }
+export function addSquash(scene: Scene, id: string, squash: Squash): Scene {
+  const piece = find(scene, id)
+  if (!piece) return scene
+
+  const squashes = [...(piece.squashes ?? []), squash]
+  if (squashes.length > MAX_SQUASHES_PER_PIECE) return scene
+  return updatePiece(scene, id, { squashes })
+}
+
+export function clearSquashes(scene: Scene, id: string): Scene {
+  const piece = find(scene, id)
+  if (!piece?.squashes?.length) return scene
+  const next = { ...piece }
+  delete next.squashes
+  return replace(scene, next)
+}
+
+/**
+ * A cut splits one piece into two independent pieces — each keeps the same
+ * colour, squashes and angle, and takes opposite sides of the cut. They are
+ * nudged apart along the cut normal so it's visible that something happened.
+ */
+export function splitPiece(scene: Scene, id: string, cut: Cut, newId: string): Scene {
+  const piece = find(scene, id)
+  if (!piece) return scene
+
+  const existing = piece.cuts ?? []
+  // Out of cuts, or no room for the second half: leave the piece whole rather
+  // than half-applying the slice.
+  if (existing.length >= MAX_CUTS_PER_PIECE) return scene
+  if (scene.pieces.length >= MAX_PIECES) return scene
+
+  // Enough that the two halves visibly separate — otherwise a clean cut looks
+  // like nothing happened — without flinging them apart.
+  const nudge = 45 * piece.scale
+  const keep: Placed = {
+    ...piece,
+    cuts: [...existing, cut],
+    x: piece.x - cut.nx * nudge,
+    y: piece.y - cut.ny * nudge,
+  }
+  const offcut: Placed = {
+    ...piece,
+    id: newId,
+    cuts: [...existing, invertCut(cut)],
+    x: piece.x + cut.nx * nudge,
+    y: piece.y + cut.ny * nudge,
+    z: piece.z + 1,
+  }
+
+  return { ...scene, pieces: [...scene.pieces.map((p) => (p.id === id ? keep : p)), offcut] }
+}
+
+export function setBackground(scene: Scene, color: string): Scene {
+  return { ...scene, bg: color }
+}
+
+function find(scene: Scene, id: string): Placed | undefined {
+  return scene.pieces.find((piece) => piece.id === id)
+}
+
+function replace(scene: Scene, piece: Placed): Scene {
+  return { ...scene, pieces: scene.pieces.map((p) => (p.id === piece.id ? piece : p)) }
 }
 
 /**

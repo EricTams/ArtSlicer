@@ -3,16 +3,16 @@
  *
  * Artwork travels as a recipe, not pixels: the host and every phone run the
  * same bundle and therefore already have every sprite, so a few hundred bytes
- * of placement data re-renders crisply at any size. A busy scene is under 4 KB,
- * which is nothing over a DataChannel — and the host can redraw it at laptop
- * resolution instead of upscaling a phone-sized screenshot.
+ * of placement data re-renders crisply at any size. A busy scene is a couple of
+ * KB, which is nothing over a DataChannel — and the host can redraw it at
+ * laptop resolution instead of upscaling a phone-sized screenshot.
  */
 
 /** Every scene is authored in this square space and scaled to fit any display. */
 export const DESIGN_SIZE = 1000
 
 /**
- * A slice, stored as a half-plane in the piece's local space: keep the side
+ * A slice, stored as a half-plane in the piece's own space: keep the side
  * where `nx * x + ny * y <= d`. Intersecting half-planes is always convex,
  * which keeps the clip math small and total.
  */
@@ -22,6 +22,34 @@ export interface Cut {
   d: number
 }
 
+/**
+ * One pass through the crusher: squeezed by `factor` along `angle`, and
+ * stretched perpendicular to it.
+ *
+ * Stored as an axis rather than folded into scaleX/scaleY because the piece
+ * springs back upright after squishing — a diagonal crush on an upright piece
+ * is not expressible as an axis-aligned scale. Rendering conjugates a scale by
+ * the angle, and successive squashes compose by nesting.
+ */
+export interface Squash {
+  /**
+   * Radians, in the piece's own frame. Zero crushes **vertically** — the crush
+   * direction is the piece's y axis turned by this angle. Getting this
+   * backwards mirrors the deformation, so it is pinned down by tests.
+   */
+  angle: number
+  /** > 1 squeezes along the axis; the perpendicular stretches to compensate. */
+  factor: number
+}
+
+/** Mixed paint: a colour and how heavily it has been sprayed on. */
+export interface Tint {
+  /** `#rrggbb`. */
+  color: string
+  /** 0 = untouched, 1 = fully tinted. */
+  amount: number
+}
+
 export interface Placed {
   /** Instance id — a piece can appear many times in one scene. */
   id: string
@@ -29,24 +57,33 @@ export interface Placed {
   pieceId: string
   x: number
   y: number
-  scaleX: number
-  scaleY: number
+  /** Uniform, set by pinching. Squashing changes shape, never overall size. */
+  scale: number
   /** Radians. */
   rotation: number
   flipX?: boolean
-  /** Index into the fixed palette; undefined means the sprite's own colours. */
-  tint?: number
+  squashes?: Squash[]
+  tint?: Tint
   cuts?: Cut[]
   z: number
 }
 
 export interface Scene {
   pieces: Placed[]
-  /** Palette index for the backdrop. */
-  bg?: number
+  /** `#rrggbb` backdrop, mixed in the colour tool like everything else. */
+  bg?: string
 }
 
 export const MAX_PIECES = 25
+/** Each squash is another nested transform evaluated every frame. */
+export const MAX_SQUASHES_PER_PIECE = 4
+/** Each cut is another clip edge evaluated every frame. */
+export const MAX_CUTS_PER_PIECE = 4
+
+export const MIN_SCALE = 0.15
+export const MAX_SCALE = 4
+export const MIN_SQUASH = 1
+export const MAX_SQUASH = 6
 
 export function emptyScene(): Scene {
   return { pieces: [] }
@@ -73,8 +110,8 @@ export function sanitizeScene(input: unknown, isKnownPiece: (id: string) => bool
     if (piece) pieces.push(piece)
   }
 
-  const bg = num(raw['bg'])
-  return bg === null ? { pieces } : { pieces, bg: clamp(Math.round(bg), 0, 63) }
+  const bg = sanitizeColor(raw['bg'])
+  return bg ? { pieces, bg } : { pieces }
 }
 
 function sanitizePlaced(input: unknown, isKnownPiece: (id: string) => boolean): Placed | null {
@@ -88,22 +125,11 @@ function sanitizePlaced(input: unknown, isKnownPiece: (id: string) => boolean): 
 
   const x = num(raw['x'])
   const y = num(raw['y'])
-  const scaleX = num(raw['scaleX'])
-  const scaleY = num(raw['scaleY'])
+  const scale = num(raw['scale'])
   const rotation = num(raw['rotation'])
   const z = num(raw['z'])
-  if (
-    x === null ||
-    y === null ||
-    scaleX === null ||
-    scaleY === null ||
-    rotation === null ||
-    z === null
-  ) {
-    return null
-  }
+  if (x === null || y === null || scale === null || rotation === null || z === null) return null
 
-  const tint = num(raw['tint'])
   const piece: Placed = {
     id: id.slice(0, 64),
     pieceId,
@@ -111,14 +137,18 @@ function sanitizePlaced(input: unknown, isKnownPiece: (id: string) => boolean): 
     // legitimate look — but not so far that a piece can vanish or blow up.
     x: clamp(x, -DESIGN_SIZE, DESIGN_SIZE * 2),
     y: clamp(y, -DESIGN_SIZE, DESIGN_SIZE * 2),
-    scaleX: clampScale(scaleX),
-    scaleY: clampScale(scaleY),
+    scale: clamp(scale, MIN_SCALE, MAX_SCALE),
     rotation: Number.isFinite(rotation) ? rotation % (Math.PI * 2) : 0,
-    z: clamp(Math.round(z), 0, MAX_PIECES * 2),
+    z: clamp(Math.round(z), -MAX_PIECES * 2, MAX_PIECES * 2),
   }
 
   if (raw['flipX'] === true) piece.flipX = true
-  if (tint !== null) piece.tint = clamp(Math.round(tint), 0, 63)
+
+  const tint = sanitizeTint(raw['tint'])
+  if (tint) piece.tint = tint
+
+  const squashes = sanitizeSquashes(raw['squashes'])
+  if (squashes.length) piece.squashes = squashes
 
   const cuts = sanitizeCuts(raw['cuts'])
   if (cuts.length) piece.cuts = cuts
@@ -126,8 +156,19 @@ function sanitizePlaced(input: unknown, isKnownPiece: (id: string) => boolean): 
   return piece
 }
 
-/** Cutting is capped: each cut is another clip edge to evaluate every frame. */
-export const MAX_CUTS_PER_PIECE = 4
+function sanitizeSquashes(input: unknown): Squash[] {
+  if (!Array.isArray(input)) return []
+  const squashes: Squash[] = []
+  for (const entry of input.slice(0, MAX_SQUASHES_PER_PIECE)) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const raw = entry as Record<string, unknown>
+    const angle = num(raw['angle'])
+    const factor = num(raw['factor'])
+    if (angle === null || factor === null) continue
+    squashes.push({ angle: angle % (Math.PI * 2), factor: clamp(factor, MIN_SQUASH, MAX_SQUASH) })
+  }
+  return squashes
+}
 
 function sanitizeCuts(input: unknown): Cut[] {
   if (!Array.isArray(input)) return []
@@ -146,19 +187,25 @@ function sanitizeCuts(input: unknown): Cut[] {
   return cuts
 }
 
+function sanitizeTint(input: unknown): Tint | null {
+  if (typeof input !== 'object' || input === null) return null
+  const raw = input as Record<string, unknown>
+  const color = sanitizeColor(raw['color'])
+  const amount = num(raw['amount'])
+  if (!color || amount === null) return null
+  return { color, amount: clamp(amount, 0, 1) }
+}
+
+/** Only `#rrggbb` — anything else could smuggle arbitrary CSS into a fill. */
+export function sanitizeColor(input: unknown): string | null {
+  if (typeof input !== 'string') return null
+  return /^#[0-9a-fA-F]{6}$/.test(input) ? input.toLowerCase() : null
+}
+
 function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
-}
-
-/**
- * Scale may be negative (a mirrored piece) but never zero, and never so large
- * that one piece covers everything.
- */
-function clampScale(value: number): number {
-  const sign = value < 0 ? -1 : 1
-  return sign * clamp(Math.abs(value), 0.05, 8)
 }

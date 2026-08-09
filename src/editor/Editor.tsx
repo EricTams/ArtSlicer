@@ -1,56 +1,52 @@
-import type Konva from 'konva'
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Circle } from 'react-konva'
 
-import { type Point, cutFromLine } from '../render/clip'
-import { PALETTE, paletteColor } from '../render/palette'
+import { pieceAt } from '../render/hitTest'
 import { SceneView } from '../render/SceneView'
-import {
-  MAX_CUTS_PER_PIECE,
-  MAX_PIECES,
-  type Placed,
-  type Scene,
-  emptyScene,
-} from '../shared/scene'
-import { PieceTray } from './PieceTray'
-import { SelectionTransformer } from './SelectionTransformer'
-import { SliceOverlay } from './SliceOverlay'
+import type { Cut, Placed, Scene, Squash } from '../shared/scene'
+import { MAX_PIECES, emptyScene } from '../shared/scene'
+import { PartsBin } from './PartsBin'
+import { EMPTY_JAR, type Jar } from './paint'
 import {
   type History,
-  addCut,
   addPiece,
-  bringToFront,
+  addSquash,
   canUndo,
-  clearCuts,
-  flipPiece,
+  movePiece,
   pushHistory,
   removePiece,
-  sendToBack,
-  setBackground,
-  setPieceTint,
+  splitPiece,
+  sprayPiece,
+  transformPiece,
   undo,
-  updatePiece,
 } from './sceneEdit'
+import { ColorTool } from './tools/ColorTool'
+import { SliceTool } from './tools/SliceTool'
+import { SquishTool } from './tools/SquishTool'
+import { useCanvasGestures } from './useCanvasGestures'
 
 interface Props {
   initialScene?: Scene
   onChange?(scene: Scene): void
 }
 
-type Mode = 'move' | 'slice'
+type Screen = 'canvas' | 'bin' | 'colour' | 'squish' | 'slice'
 
-/** Whether the palette is recolouring the selected piece or the backdrop. */
-type PaintTarget = 'piece' | 'background'
-
+/**
+ * Phone-first build screen: your picture, and a parts bin. Everything you do
+ * to a piece happens in its own full-screen tool, so each one can stay a
+ * single physical action instead of a panel of controls.
+ */
 export function Editor({ initialScene, onChange }: Props) {
   const [history, setHistory] = useState<History>(() => ({
     past: [],
     present: initialScene ?? emptyScene(),
   }))
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [mode, setMode] = useState<Mode>('move')
-  const [paintTarget, setPaintTarget] = useState<PaintTarget>('piece')
-  const [slice, setSlice] = useState<{ from: Point; to: Point } | null>(null)
-  const stageRef = useRef<Konva.Stage>(null)
+  const [screen, setScreen] = useState<Screen>('canvas')
+  // Mixed paint outlives the tool, so colouring several pieces the same shade
+  // doesn't mean mixing it again each time.
+  const [jar, setJar] = useState<Jar>(EMPTY_JAR)
 
   const scene = history.present
   const selected = scene.pieces.find((piece) => piece.id === selectedId) ?? null
@@ -59,212 +55,187 @@ export function Editor({ initialScene, onChange }: Props) {
     setHistory((current) => pushHistory(current, next))
   }, [])
 
+  /** Drags emit continuously; they must not each become an undo step. */
+  const live = useCallback((next: Scene) => {
+    setHistory((current) => ({ ...current, present: next }))
+  }, [])
+
   useEffect(() => {
     onChange?.(scene)
   }, [scene, onChange])
 
-  // Leaving slice mode whenever the selection goes away keeps the two modes
-  // from getting out of sync with what the toolbar shows.
-  useEffect(() => {
-    if (!selected) setMode('move')
-  }, [selected])
+  const { ref: canvasRef, setRef: canvasCallbackRef, size } = useSquareSize()
+  const sceneRef = useRef(scene)
+  sceneRef.current = scene
 
-  const { ref: canvasRef, size } = useSquareSize()
-
-  const handleAdd = useCallback(
-    (pieceId: string) => {
-      const id = crypto.randomUUID().slice(0, 8)
-      commit(addPiece(scene, pieceId, id))
-      setSelectedId(id)
+  useCanvasGestures(
+    canvasRef,
+    size,
+    useCallback((x: number, y: number) => pieceAt(sceneRef.current, x, y), []),
+    {
+      onMove: useCallback((id, x, y) => live(movePiece(sceneRef.current, id, x, y)), [live]),
+      onTransform: useCallback(
+        (id, scale, rotation) => live(transformPiece(sceneRef.current, id, scale, rotation)),
+        [live],
+      ),
+      onTap: useCallback((id: string) => setSelectedId(id), []),
+      onTapEmpty: useCallback(() => setSelectedId(null), []),
     },
-    [commit, scene],
   )
-
-  const handlePieceChange = useCallback(
-    (id: string, changes: Partial<Placed>) => commit(updatePiece(scene, id, changes)),
-    [commit, scene],
-  )
-
-  const sliceHandlers = useSliceGesture({
-    active: mode === 'slice' && Boolean(selected),
-    selectedId,
-    stageRef,
-    onPreview: setSlice,
-    onCommit: (cut) => {
-      if (!selectedId) return
-      commit(addCut(scene, selectedId, cut))
-      setSlice(null)
-      setMode('move')
-    },
-  })
 
   const full = scene.pieces.length >= MAX_PIECES
-  const cutsUsed = selected?.cuts?.length ?? 0
 
   return (
-    <div className="editor">
-      <div className="editor__canvas" ref={canvasRef} {...sliceHandlers}>
-        {size > 0 && (
-          <SceneView
-            scene={scene}
-            size={size}
-            stageRef={stageRef}
-            // In slice mode the canvas must not react to taps at all: a press
-            // on bare canvas would otherwise clear the selection and cancel
-            // the very cut being drawn. Dropping the handler also stops Konva
-            // listening, so the slice gesture gets the raw pointer events.
-            onSelect={mode === 'move' ? setSelectedId : undefined}
-            draggable={mode === 'move'}
-            onPieceChange={handlePieceChange}
-          >
-            {mode === 'move' && (
-              <SelectionTransformer
-                selectedId={selectedId}
-                flipX={Boolean(selected?.flipX)}
-                onChange={handlePieceChange}
-              />
-            )}
-            {slice && <SliceOverlay from={slice.from} to={slice.to} />}
-          </SceneView>
+    <>
+      <div className="make">
+        <div className="make__canvas" ref={canvasCallbackRef}>
+          {size > 0 && (
+            <SceneView scene={scene} size={size}>
+              {selected && <SelectionRing piece={selected} />}
+            </SceneView>
+          )}
+        </div>
+
+        {selected ? (
+          <div className="make__tools">
+            <ToolButton glyph="🎨" label="Colour" onClick={() => setScreen('colour')} />
+            <ToolButton glyph="🗜️" label="Squish" onClick={() => setScreen('squish')} />
+            <ToolButton glyph="🔪" label="Slice" onClick={() => setScreen('slice')} />
+            <ToolButton
+              glyph="🗑"
+              label="Bin it"
+              onClick={() => {
+                commit(removePiece(scene, selected.id))
+                setSelectedId(null)
+              }}
+            />
+          </div>
+        ) : (
+          <p className="make__hint">
+            {scene.pieces.length === 0
+              ? 'Open the parts bin to grab something.'
+              : 'Drag to move · pinch to size and turn · tap a piece for tools'}
+          </p>
         )}
+
+        <div className="make__bottom">
+          <button
+            type="button"
+            className="btn btn--ghost make__undo"
+            disabled={!canUndo(history)}
+            onClick={() => setHistory(undo(history))}
+            aria-label="Undo"
+          >
+            ↶
+          </button>
+          <button type="button" className="btn make__bin" onClick={() => setScreen('bin')}>
+            Parts bin{full ? ' (full)' : ''}
+          </button>
+        </div>
       </div>
 
-      <div className="editor__tools">
-        <ToolButton
-          label="Undo"
-          glyph="↶"
-          disabled={!canUndo(history)}
-          onClick={() => setHistory(undo(history))}
-        />
-        <ToolButton
-          label="Flip"
-          glyph="⇄"
-          disabled={!selected}
-          onClick={() => selected && commit(flipPiece(scene, selected.id))}
-        />
-        <ToolButton
-          label="Front"
-          glyph="⬆"
-          disabled={!selected}
-          onClick={() => selected && commit(bringToFront(scene, selected.id))}
-        />
-        <ToolButton
-          label="Back"
-          glyph="⬇"
-          disabled={!selected}
-          onClick={() => selected && commit(sendToBack(scene, selected.id))}
-        />
-        <ToolButton
-          label={cutsUsed ? `Slice ${cutsUsed}/${MAX_CUTS_PER_PIECE}` : 'Slice'}
-          glyph="✂"
-          on={mode === 'slice'}
-          disabled={!selected || cutsUsed >= MAX_CUTS_PER_PIECE}
-          onClick={() => setMode(mode === 'slice' ? 'move' : 'slice')}
-        />
-        <ToolButton
-          label="Unslice"
-          glyph="⟲"
-          disabled={!selected || cutsUsed === 0}
-          onClick={() => selected && commit(clearCuts(scene, selected.id))}
-        />
-        <ToolButton
-          label="Delete"
-          glyph="🗑"
-          disabled={!selected}
-          onClick={() => {
-            if (!selected) return
-            commit(removePiece(scene, selected.id))
-            setSelectedId(null)
+      {/* Tools layer over the canvas rather than replacing it. Unmounting the
+          canvas would tear down the Konva stage and leave the resize observer
+          and gesture listeners bound to a detached node. */}
+      {screen === 'bin' && (
+        <PartsBin
+          full={full}
+          onClose={() => setScreen('canvas')}
+          onPick={(pieceId) => {
+            const id = crypto.randomUUID().slice(0, 8)
+            commit(addPiece(sceneRef.current, pieceId, id))
+            setSelectedId(id)
+            setScreen('canvas')
           }}
         />
-      </div>
-
-      {mode === 'slice' && (
-        <p className="editor__hint">Drag across the piece — the side you start on is cut away.</p>
       )}
 
-      <div className="editor__paint">
-        <div className="editor__painttabs">
-          <button
-            type="button"
-            className={`chip${paintTarget === 'piece' ? ' chip--on' : ''}`}
-            onClick={() => setPaintTarget('piece')}
-          >
-            Piece
-          </button>
-          <button
-            type="button"
-            className={`chip${paintTarget === 'background' ? ' chip--on' : ''}`}
-            onClick={() => setPaintTarget('background')}
-          >
-            Background
-          </button>
-        </div>
-        <div className="swatches">
-          {PALETTE.map((color, index) => {
-            const active =
-              paintTarget === 'piece' ? (selected?.tint ?? 0) === index : (scene.bg ?? 0) === index
-            return (
-              <button
-                key={color}
-                type="button"
-                className={`swatch${active ? ' swatch--on' : ''}`}
-                style={{ background: paletteColor(index) }}
-                disabled={paintTarget === 'piece' && !selected}
-                aria-label={`Colour ${index}`}
-                onClick={() =>
-                  paintTarget === 'piece'
-                    ? selected && commit(setPieceTint(scene, selected.id, index))
-                    : commit(setBackground(scene, index))
-                }
-              />
-            )
-          })}
-        </div>
-      </div>
-
-      <PieceTray onAdd={handleAdd} disabled={full} />
-      {full && (
-        <p className="editor__hint">That is all {MAX_PIECES} pieces — delete one to add another.</p>
+      {selected && screen === 'colour' && (
+        <ColorTool
+          piece={selected}
+          jar={jar}
+          onJarChange={setJar}
+          onSpray={(color, delta) => live(sprayPiece(sceneRef.current, selected.id, color, delta))}
+          onDone={() => {
+            // One undo step for the whole spray, not one per animation frame.
+            commit(sceneRef.current)
+            setScreen('canvas')
+          }}
+          onCancel={() => setScreen('canvas')}
+        />
       )}
-    </div>
+
+      {selected && screen === 'squish' && (
+        <SquishTool
+          piece={selected}
+          onCommit={(squash: Squash) => {
+            commit(addSquash(sceneRef.current, selected.id, squash))
+            setScreen('canvas')
+          }}
+          onCancel={() => setScreen('canvas')}
+        />
+      )}
+
+      {selected && screen === 'slice' && (
+        <SliceTool
+          piece={selected}
+          onCommit={(cut: Cut) => {
+            commit(splitPiece(sceneRef.current, selected.id, cut, crypto.randomUUID().slice(0, 8)))
+            setScreen('canvas')
+          }}
+          onCancel={() => setScreen('canvas')}
+        />
+      )}
+    </>
   )
 }
 
-function ToolButton({
-  label,
-  glyph,
-  onClick,
-  disabled,
-  on,
-}: {
-  label: string
-  glyph: string
-  onClick(): void
-  disabled?: boolean
-  on?: boolean
-}) {
+/**
+ * A soft marker so it's obvious which piece the tools will act on. Drawn as a
+ * ring around the piece's centre rather than a bounding box, because a sliced
+ * and squashed piece has no meaningful box.
+ */
+function SelectionRing({ piece }: { piece: Placed }) {
   return (
-    <button
-      type="button"
-      className={`tool${on ? ' tool--on' : ''}`}
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={on}
-    >
-      <span className="tool__glyph">{glyph}</span>
-      <span className="tool__label">{label}</span>
+    <Circle
+      x={piece.x}
+      y={piece.y}
+      radius={30}
+      stroke="#ff4d8d"
+      strokeWidth={7}
+      dash={[18, 12]}
+      listening={false}
+    />
+  )
+}
+
+function ToolButton({ glyph, label, onClick }: { glyph: string; label: string; onClick(): void }) {
+  return (
+    <button type="button" className="bigtool" onClick={onClick}>
+      <span className="bigtool__glyph">{glyph}</span>
+      <span className="bigtool__label">{label}</span>
     </button>
   )
 }
 
-/** The canvas is square and as large as the space allows. */
+/**
+ * The canvas is square and as large as the space allows.
+ *
+ * Re-observes whenever the element identity changes rather than only on mount —
+ * observing a node that has since been replaced silently reports zero, which
+ * shows up as a canvas that renders nothing.
+ */
 function useSquareSize() {
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [element, setElement] = useState<HTMLDivElement | null>(null)
   const [size, setSize] = useState(0)
 
+  const setRef = useCallback((node: HTMLDivElement | null) => {
+    ref.current = node
+    setElement(node)
+  }, [])
+
   useEffect(() => {
-    const element = ref.current
     if (!element) return
     const observer = new ResizeObserver(([entry]) => {
       const box = entry?.contentRect
@@ -272,80 +243,7 @@ function useSquareSize() {
     })
     observer.observe(element)
     return () => observer.disconnect()
-  }, [])
+  }, [element])
 
-  return { ref, size }
-}
-
-/**
- * Turns a drag across the canvas into a cut in the selected piece's local
- * space. Working in local space means the cut follows the piece when it is
- * later moved, rotated, or scaled.
- */
-function useSliceGesture({
-  active,
-  selectedId,
-  stageRef,
-  onPreview,
-  onCommit,
-}: {
-  active: boolean
-  selectedId: string | null
-  stageRef: RefObject<Konva.Stage | null>
-  onPreview(line: { from: Point; to: Point } | null): void
-  onCommit(cut: { nx: number; ny: number; d: number }): void
-}) {
-  const start = useRef<{ design: Point; local: Point } | null>(null)
-
-  const locate = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>): { design: Point; local: Point } | null => {
-      const stage = stageRef.current
-      if (!stage || !selectedId) return null
-
-      const rect = event.currentTarget.getBoundingClientRect()
-      const screen = { x: event.clientX - rect.left, y: event.clientY - rect.top }
-
-      const node = stage.findOne(`#${selectedId}`)
-      if (!node) return null
-
-      // Inverting the node's absolute transform undoes the stage scale and the
-      // piece's own translate/rotate/scale/flip in one step.
-      const local = node.getAbsoluteTransform().copy().invert().point(screen)
-      const scale = stage.scaleX() || 1
-      return { design: { x: screen.x / scale, y: screen.y / scale }, local }
-    },
-    [selectedId, stageRef],
-  )
-
-  const memo = useMemo(
-    () => ({
-      onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-        if (!active) return
-        const point = locate(event)
-        if (!point) return
-        start.current = point
-        onPreview({ from: point.design, to: point.design })
-        event.currentTarget.setPointerCapture(event.pointerId)
-      },
-      onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-        if (!active || !start.current) return
-        const point = locate(event)
-        if (point) onPreview({ from: start.current.design, to: point.design })
-      },
-      onPointerUp(event: React.PointerEvent<HTMLDivElement>) {
-        if (!active || !start.current) return
-        const from = start.current
-        start.current = null
-        const point = locate(event)
-        onPreview(null)
-        if (!point) return
-
-        const cut = cutFromLine(from.local, point.local)
-        if (cut) onCommit(cut)
-      },
-    }),
-    [active, locate, onPreview, onCommit],
-  )
-
-  return active ? memo : {}
+  return { ref, setRef, size }
 }
