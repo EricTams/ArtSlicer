@@ -69,7 +69,7 @@ describe('joining', () => {
 
   it('refuses new players once the game is under way', () => {
     let state = join(join(createRoom('ACDF'), 'p1', { now: 1 }), 'p2', { now: 2 })
-    state = reduce(state, { type: 'START', playerId: 'p1' }).state
+    state = reduce(state, { type: 'START', playerId: 'p1', now: 5000 }).state
 
     const result = reduce(state, {
       type: 'JOIN',
@@ -86,7 +86,7 @@ describe('joining', () => {
 describe('reclaiming a seat', () => {
   it('restores a disconnected player with the right secret, keeping their score', () => {
     let state = join(join(createRoom('ACDF'), 'p1', { now: 1 }), 'p2', { now: 2 })
-    state = reduce(state, { type: 'START', playerId: 'p1' }).state
+    state = reduce(state, { type: 'START', playerId: 'p1', now: 5000 }).state
     state = { ...state, players: state.players.map((p) => (p.id === 'p2' ? { ...p, score: 300 } : p)) }
     state = reduce(state, { type: 'DISCONNECT', playerId: 'p2' }).state
     expect(state.players.find((p) => p.id === 'p2')?.connected).toBe(false)
@@ -140,28 +140,28 @@ describe('starting', () => {
   it('needs two connected players', () => {
     const state = join(createRoom('ACDF'), 'p1')
     expect(canStart(state)).toBe(false)
-    const result = reduce(state, { type: 'START', playerId: 'p1' })
+    const result = reduce(state, { type: 'START', playerId: 'p1', now: 5000 })
     expect(result.rejection?.code).toBe('invalid')
     expect(result.state.phase).toBe('lobby')
   })
 
   it('only honors the leader', () => {
     const state = join(join(createRoom('ACDF'), 'p1', { now: 1 }), 'p2', { now: 2 })
-    const result = reduce(state, { type: 'START', playerId: 'p2' })
+    const result = reduce(state, { type: 'START', playerId: 'p2', now: 5000 })
     expect(result.rejection?.code).toBe('invalid')
     expect(result.state.phase).toBe('lobby')
   })
 
   it('moves to building when the leader starts a full-enough room', () => {
     const state = join(join(createRoom('ACDF'), 'p1', { now: 1 }), 'p2', { now: 2 })
-    const result = reduce(state, { type: 'START', playerId: 'p1' })
+    const result = reduce(state, { type: 'START', playerId: 'p1', now: 5000 })
     expect(result.rejection).toBeUndefined()
     expect(result.state.phase).toBe('building')
   })
 
   it('does not count disconnected players toward the minimum', () => {
     let state = join(join(createRoom('ACDF'), 'p1', { now: 1 }), 'p2', { now: 2 })
-    state = reduce(state, { type: 'START', playerId: 'p1' }).state
+    state = reduce(state, { type: 'START', playerId: 'p1', now: 5000 }).state
     state = reduce(state, { type: 'DISCONNECT', playerId: 'p2' }).state
     // Back to a lobby-like roster: one connected player is not enough.
     const lobbyAgain: RoomState = { ...state, phase: 'lobby' }

@@ -1,8 +1,11 @@
 import { createPeerHost } from '../net/peerHost'
 import type { ConnId, ConnectionFailure, HostTransport } from '../net/transport'
-import { type ClientMessage, PROTOCOL_VERSION } from '../shared/protocol'
+import { isKnownPiece } from '../render/pieces'
+import { type ClientMessage, PROTOCOL_VERSION, type RevealedEntry } from '../shared/protocol'
 import { type PlayerId, type RoomState, createRoom, publicPlayers } from '../shared/gameState'
-import { canStart, reduce } from './reducer'
+import { sanitizeScene } from '../shared/scene'
+import { ballotFor, canStart, reduce } from './reducer'
+import { tallyRound } from './scoring'
 
 export interface HostRoomHandlers {
   onStateChange(state: RoomState): void
@@ -10,9 +13,13 @@ export interface HostRoomHandlers {
   onFailure(failure: ConnectionFailure): void
 }
 
+/** How often the host checks whether the current phase has run out of time. */
+const TICK_MS = 250
+
 /**
  * Owns the authoritative room: applies the pure reducer to messages arriving
- * from phones, then broadcasts the result. All game truth lives here.
+ * from phones, then broadcasts the result. All game truth lives here, and the
+ * host owns every deadline so no phone can rush or stall a round.
  */
 export function createHostRoom(handlers: HostRoomHandlers) {
   let state: RoomState = createRoom('')
@@ -31,7 +38,10 @@ export function createHostRoom(handlers: HostRoomHandlers) {
   function broadcastState(): void {
     const players = publicPlayers(state)
     const startable = canStart(state)
-    // `you` differs per recipient, so this can't be a single broadcast frame.
+    const reveal = state.phase === 'roundResults' ? buildReveal() : undefined
+
+    // `you`, the ballot, and the player's own vote all differ per recipient,
+    // so this cannot be a single broadcast frame.
     for (const [conn, playerId] of connToPlayer) {
       transport?.send(conn, {
         t: 'state',
@@ -40,9 +50,37 @@ export function createHostRoom(handlers: HostRoomHandlers) {
         players,
         you: playerId,
         roundIndex: state.roundIndex,
+        totalRounds: state.totalRounds,
         canStart: startable && state.leaderId === playerId,
+        prompt: state.prompt,
+        deadline: state.deadline,
+        ...(state.phase === 'voting'
+          ? {
+              ballot: ballotFor(state, playerId).map((entry) => ({
+                entryId: entry.entryId,
+                scene: entry.scene,
+              })),
+              yourVote: state.votes[playerId],
+            }
+          : {}),
+        ...(reveal ? { reveal, winners: state.lastRoundWinners } : {}),
+        youSubmitted: state.submissions.some((entry) => entry.playerId === playerId),
       })
     }
+  }
+
+  /** Authorship and scores, revealed only once voting has closed. */
+  function buildReveal(): RevealedEntry[] {
+    const { votesByEntry } = tallyRound(state.submissions, state.votes)
+    return state.submissions
+      .map((entry) => ({
+        entryId: entry.entryId,
+        scene: entry.scene,
+        playerId: entry.playerId,
+        votes: votesByEntry[entry.entryId] ?? 0,
+        points: state.lastRoundPoints[entry.playerId] ?? 0,
+      }))
+      .sort((a, b) => b.votes - a.votes)
   }
 
   function handleMessage(conn: ConnId, message: ClientMessage): void {
@@ -96,12 +134,39 @@ export function createHostRoom(handlers: HostRoomHandlers) {
       case 'start': {
         const playerId = connToPlayer.get(conn)
         if (!playerId) return
-        const result = reduce(state, { type: 'START', playerId })
-        if (result.rejection) {
-          transport?.send(conn, { t: 'error', ...result.rejection })
+        apply(conn, reduce(state, { type: 'START', playerId, now: Date.now() }))
+        return
+      }
+
+      case 'submit': {
+        const playerId = connToPlayer.get(conn)
+        if (!playerId) return
+
+        // Clients are not trusted: clamp the scene and reject unknown piece
+        // ids before this ever reaches the shared screen.
+        const scene = sanitizeScene(message.scene, isKnownPiece)
+        if (!scene) {
+          transport?.send(conn, { t: 'error', code: 'invalid', message: 'That artwork could not be read.' })
           return
         }
-        setState(result.state)
+
+        apply(
+          conn,
+          reduce(state, {
+            type: 'SUBMIT',
+            playerId,
+            scene,
+            entryId: crypto.randomUUID().slice(0, 8),
+            now: Date.now(),
+          }),
+        )
+        return
+      }
+
+      case 'vote': {
+        const playerId = connToPlayer.get(conn)
+        if (!playerId) return
+        apply(conn, reduce(state, { type: 'VOTE', playerId, entryId: message.entryId, now: Date.now() }))
         return
       }
 
@@ -109,6 +174,14 @@ export function createHostRoom(handlers: HostRoomHandlers) {
         transport?.send(conn, { t: 'pong', clientTime: message.clientTime, hostTime: Date.now() })
         return
     }
+  }
+
+  function apply(conn: ConnId, result: ReturnType<typeof reduce>): void {
+    if (result.rejection) {
+      transport?.send(conn, { t: 'error', ...result.rejection })
+      return
+    }
+    setState(result.state)
   }
 
   transport = createPeerHost({
@@ -133,9 +206,17 @@ export function createHostRoom(handlers: HostRoomHandlers) {
     onFailure: handlers.onFailure,
   })
 
+  // Time only moves forward here. Phases also end early when everyone is done,
+  // which the reducer handles on the triggering event itself.
+  const timer = setInterval(() => {
+    if (state.deadline === null) return
+    setState(reduce(state, { type: 'TICK', now: Date.now() }).state)
+  }, TICK_MS)
+
   return {
     getState: () => state,
     destroy() {
+      clearInterval(timer)
       transport?.destroy()
       transport = null
     },

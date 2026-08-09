@@ -1,16 +1,26 @@
 import type { ErrorCode } from '../shared/protocol'
+import type { Scene } from '../shared/scene'
 import {
+  BUILD_MS,
   MAX_PLAYERS,
   MIN_PLAYERS_TO_START,
   type Player,
   type PlayerId,
+  RESULTS_MS,
   type RoomState,
+  type Submission,
+  VOTE_MS,
+  activePlayers,
   sanitizeName,
 } from '../shared/gameState'
+import { shufflePrompts } from './prompts'
+import { tallyRound } from './scoring'
 
 /**
  * Everything that can change the room. The reducer is pure — no React, no
- * PeerJS, no timers — so the whole game is testable without a browser.
+ * PeerJS, no timers — so the whole game is testable without a browser. The
+ * host drives time forward by sending TICK; the reducer decides what that
+ * means.
  */
 export type GameEvent =
   | {
@@ -22,7 +32,10 @@ export type GameEvent =
       now: number
     }
   | { type: 'DISCONNECT'; playerId: PlayerId }
-  | { type: 'START'; playerId: PlayerId }
+  | { type: 'START'; playerId: PlayerId; now: number }
+  | { type: 'SUBMIT'; playerId: PlayerId; scene: Scene; entryId: string; now: number }
+  | { type: 'VOTE'; playerId: PlayerId; entryId: string; now: number }
+  | { type: 'TICK'; now: number }
 
 export type Rejection = { code: ErrorCode; message: string }
 
@@ -39,9 +52,17 @@ export function reduce(state: RoomState, event: GameEvent): ReduceResult {
     case 'DISCONNECT':
       return disconnect(state, event.playerId)
     case 'START':
-      return start(state, event.playerId)
+      return start(state, event.playerId, event.now)
+    case 'SUBMIT':
+      return submit(state, event)
+    case 'VOTE':
+      return vote(state, event)
+    case 'TICK':
+      return { state: advanceIfDue(state, event.now) }
   }
 }
+
+// --- lobby ------------------------------------------------------------------
 
 function join(state: RoomState, event: Extract<GameEvent, { type: 'JOIN' }>): ReduceResult {
   const existing = state.players.find((p) => p.id === event.playerId)
@@ -101,7 +122,7 @@ function disconnect(state: RoomState, playerId: PlayerId): ReduceResult {
   return { state: withLeader({ ...state, players }) }
 }
 
-function start(state: RoomState, playerId: PlayerId): ReduceResult {
+function start(state: RoomState, playerId: PlayerId, now: number): ReduceResult {
   if (state.phase !== 'lobby') {
     return { state, rejection: { code: 'game-in-progress', message: 'The game is already running.' } }
   }
@@ -114,8 +135,128 @@ function start(state: RoomState, playerId: PlayerId): ReduceResult {
       rejection: { code: 'invalid', message: `Need at least ${MIN_PLAYERS_TO_START} players.` },
     }
   }
-  return { state: { ...state, phase: 'building', roundIndex: 0 } }
+
+  return { state: beginRound({ ...state, promptPool: shufflePrompts(), roundIndex: 0 }, now) }
 }
+
+// --- round play -------------------------------------------------------------
+
+function submit(state: RoomState, event: Extract<GameEvent, { type: 'SUBMIT' }>): ReduceResult {
+  if (state.phase !== 'building') {
+    return { state, rejection: { code: 'invalid', message: 'The build phase is over.' } }
+  }
+  if (!state.players.some((p) => p.id === event.playerId)) {
+    return { state, rejection: { code: 'invalid', message: 'You are not in this game.' } }
+  }
+
+  const existing = state.submissions.find((entry) => entry.playerId === event.playerId)
+  // Resubmitting replaces the previous scene but keeps the entry id, so a vote
+  // already cast against it stays valid.
+  const submissions = existing
+    ? state.submissions.map((entry) =>
+        entry.playerId === event.playerId ? { ...entry, scene: event.scene } : entry,
+      )
+    : [...state.submissions, { playerId: event.playerId, entryId: event.entryId, scene: event.scene }]
+
+  return { state: advanceIfDue({ ...state, submissions }, event.now) }
+}
+
+function vote(state: RoomState, event: Extract<GameEvent, { type: 'VOTE' }>): ReduceResult {
+  if (state.phase !== 'voting') {
+    return { state, rejection: { code: 'invalid', message: 'Voting is not open.' } }
+  }
+
+  const entry = state.submissions.find((submission) => submission.entryId === event.entryId)
+  if (!entry) {
+    return { state, rejection: { code: 'invalid', message: 'That entry is not in this round.' } }
+  }
+  if (entry.playerId === event.playerId) {
+    return { state, rejection: { code: 'invalid', message: 'You cannot vote for your own.' } }
+  }
+
+  const votes = { ...state.votes, [event.playerId]: event.entryId }
+  return { state: advanceIfDue({ ...state, votes }, event.now) }
+}
+
+/**
+ * The single place phases move forward. Called on every tick and after any
+ * event that could complete a phase early, so a round ends the moment everyone
+ * is done rather than waiting out the clock.
+ */
+function advanceIfDue(state: RoomState, now: number): RoomState {
+  const expired = state.deadline !== null && now >= state.deadline
+
+  switch (state.phase) {
+    case 'building': {
+      const waiting = activePlayers(state).filter(
+        (player) => !state.submissions.some((entry) => entry.playerId === player.id),
+      )
+      if (!expired && waiting.length > 0) return state
+      return beginVoting(state, now)
+    }
+
+    case 'voting': {
+      // Players who submitted nothing still vote; players who left do not.
+      const waiting = activePlayers(state).filter((player) => !(player.id in state.votes))
+      if (!expired && waiting.length > 0) return state
+      return scoreRound(state, now)
+    }
+
+    case 'roundResults':
+      if (!expired) return state
+      return state.roundIndex + 1 >= state.totalRounds
+        ? { ...state, phase: 'finalResults', deadline: null }
+        : beginRound({ ...state, roundIndex: state.roundIndex + 1 }, now)
+
+    default:
+      return state
+  }
+}
+
+function beginRound(state: RoomState, now: number): RoomState {
+  const [prompt, ...rest] = state.promptPool
+  // Reshuffle rather than run dry if a very long game exhausts the pool.
+  const pool = rest.length ? rest : shufflePrompts()
+
+  return {
+    ...state,
+    phase: 'building',
+    prompt: prompt ?? shufflePrompts()[0]!,
+    promptPool: pool,
+    submissions: [],
+    votes: {},
+    lastRoundPoints: {},
+    lastRoundWinners: [],
+    deadline: now + BUILD_MS,
+  }
+}
+
+function beginVoting(state: RoomState, now: number): RoomState {
+  // With fewer than two entries there is nothing to choose between, so skip
+  // straight to the results rather than showing a one-option ballot.
+  if (state.submissions.length < 2) {
+    return scoreRound({ ...state, phase: 'voting', votes: {} }, now)
+  }
+  return { ...state, phase: 'voting', votes: {}, deadline: now + VOTE_MS }
+}
+
+function scoreRound(state: RoomState, now: number): RoomState {
+  const { points, winners } = tallyRound(state.submissions, state.votes)
+
+  return {
+    ...state,
+    phase: 'roundResults',
+    players: state.players.map((player) => ({
+      ...player,
+      score: player.score + (points[player.id] ?? 0),
+    })),
+    lastRoundPoints: points,
+    lastRoundWinners: winners,
+    deadline: now + RESULTS_MS,
+  }
+}
+
+// --- helpers ----------------------------------------------------------------
 
 /**
  * The leader is the longest-connected player. Recomputed after every roster
@@ -150,4 +291,9 @@ export function connectedCount(state: RoomState): number {
 
 export function canStart(state: RoomState): boolean {
   return state.phase === 'lobby' && connectedCount(state) >= MIN_PLAYERS_TO_START
+}
+
+/** The ballot a given player should see: everyone's entry except their own. */
+export function ballotFor(state: RoomState, playerId: PlayerId): Submission[] {
+  return state.submissions.filter((entry) => entry.playerId !== playerId)
 }

@@ -1,13 +1,18 @@
+import { usePiecesLoaded } from '../editor/usePiecesLoaded'
 import { describeFailure } from '../net/transport'
 import { getAvatar } from '../shared/avatars'
 import { MAX_PLAYERS, MIN_PLAYERS_TO_START, type PublicPlayer, publicPlayers } from '../shared/gameState'
 import { joinUrl } from '../shared/roomCode'
 import { QrCode } from './QrCode'
+import { BuildingScreen, FinalScreen, ResultsScreen, VotingScreen } from './RoundScreens'
 import { useHostRoom } from './useHostRoom'
 
 /** Host entry point — runs on the laptop and is the authoritative game server. */
 export function HostApp() {
   const { status, state, failure } = useHostRoom()
+  // The host re-renders the scenes phones submit, so it needs the same sprites
+  // they do. Loading starts immediately and overlaps with the lobby wait.
+  const piecesLoaded = usePiecesLoaded()
 
   if (status === 'failed' && failure) {
     return (
@@ -34,16 +39,26 @@ export function HostApp() {
     )
   }
 
-  if (state.phase !== 'lobby') {
+  if (state.phase !== 'lobby' && !piecesLoaded) {
     return (
       <div className="screen screen--center">
-        <h1 className="brand">Round 1</h1>
-        <p className="tagline">The build phase lands in M4.</p>
+        <p className="tagline">Loading the junk…</p>
       </div>
     )
   }
 
-  return <Lobby roomCode={state.roomCode} players={publicPlayers(state)} />
+  switch (state.phase) {
+    case 'building':
+      return <BuildingScreen state={state} />
+    case 'voting':
+      return <VotingScreen state={state} />
+    case 'roundResults':
+      return <ResultsScreen state={state} />
+    case 'finalResults':
+      return <FinalScreen state={state} />
+    case 'lobby':
+      return <Lobby roomCode={state.roomCode} players={publicPlayers(state)} />
+  }
 }
 
 function Lobby({ roomCode, players }: { roomCode: string; players: PublicPlayer[] }) {

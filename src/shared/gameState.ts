@@ -1,5 +1,7 @@
 /** Types describing the room as the host sees it, and as clients see it. */
 
+import type { Scene } from './scene'
+
 export type PlayerId = string
 
 export type Phase =
@@ -30,6 +32,20 @@ export interface PublicPlayer {
   connected: boolean
   score: number
   isLeader: boolean
+  /** Drives the host's "waiting for…" display during a round. */
+  submitted: boolean
+  voted: boolean
+}
+
+export interface Submission {
+  playerId: PlayerId
+  /**
+   * Opaque per-round handle used for voting. Ballots carry this instead of the
+   * author's id so a curious player can't read authorship off the wire before
+   * the reveal.
+   */
+  entryId: string
+  scene: Scene
 }
 
 export interface RoomState {
@@ -39,11 +55,29 @@ export interface RoomState {
   /** Whose "start" is honored. Null when the room is empty. */
   leaderId: PlayerId | null
   roundIndex: number
+  totalRounds: number
+  prompt: string
+  /** Shuffled once per game and drawn from the front, so prompts never repeat. */
+  promptPool: string[]
+  submissions: Submission[]
+  /** Voter id to the entry they picked. */
+  votes: Record<PlayerId, string>
+  /** Absolute epoch ms for the current phase, or null when untimed. */
+  deadline: number | null
+  /** Points earned in the round just scored, for the results screen. */
+  lastRoundPoints: Record<PlayerId, number>
+  lastRoundWinners: PlayerId[]
 }
 
 export const MAX_PLAYERS = 8
 export const MIN_PLAYERS_TO_START = 2
 export const MAX_NAME_LENGTH = 12
+export const DEFAULT_ROUNDS = 3
+
+/** Phase durations. Building dominates; the rest keep the game moving. */
+export const BUILD_MS = 150_000
+export const VOTE_MS = 45_000
+export const RESULTS_MS = 9_000
 
 export function createRoom(roomCode: string): RoomState {
   return {
@@ -52,22 +86,33 @@ export function createRoom(roomCode: string): RoomState {
     players: [],
     leaderId: null,
     roundIndex: 0,
+    totalRounds: DEFAULT_ROUNDS,
+    prompt: '',
+    promptPool: [],
+    submissions: [],
+    votes: {},
+    deadline: null,
+    lastRoundPoints: {},
+    lastRoundWinners: [],
   }
 }
 
-export function toPublicPlayer(player: Player, leaderId: PlayerId | null): PublicPlayer {
-  return {
+export function publicPlayers(state: RoomState): PublicPlayer[] {
+  return state.players.map((player) => ({
     id: player.id,
     name: player.name,
     avatarId: player.avatarId,
     connected: player.connected,
     score: player.score,
-    isLeader: player.id === leaderId,
-  }
+    isLeader: player.id === state.leaderId,
+    submitted: state.submissions.some((entry) => entry.playerId === player.id),
+    voted: player.id in state.votes,
+  }))
 }
 
-export function publicPlayers(state: RoomState): PublicPlayer[] {
-  return state.players.map((player) => toPublicPlayer(player, state.leaderId))
+/** Players who are actually in the round — a disconnected phone can't build. */
+export function activePlayers(state: RoomState): Player[] {
+  return state.players.filter((player) => player.connected)
 }
 
 /**

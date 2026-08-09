@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { createPeerClient } from '../net/peerClient'
 import { type ClientTransport, describeFailure } from '../net/transport'
-import { PROTOCOL_VERSION } from '../shared/protocol'
+import { type BallotEntry, PROTOCOL_VERSION, type RevealedEntry } from '../shared/protocol'
 import type { Phase, PlayerId, PublicPlayer } from '../shared/gameState'
+import type { Scene } from '../shared/scene'
 import { type Identity, saveIdentity } from './identity'
 
 /**
@@ -17,15 +18,26 @@ export interface ClientRoom {
   status: ClientStatus
   phase: Phase
   roundIndex: number
+  totalRounds: number
+  prompt: string
   players: PublicPlayer[]
   you: PlayerId | null
   canStart: boolean
+  /** Host clock time at which the current phase ends, or null when untimed. */
+  deadline: number | null
+  ballot: BallotEntry[]
+  yourVote: string | null
+  youSubmitted: boolean
+  reveal: RevealedEntry[]
+  winners: PlayerId[]
   /** A human-readable problem, whether from the transport or the host. */
   problem: string | null
   /** Host clock minus local clock, so countdowns agree across devices. */
   clockOffset: number
   join(name: string, avatarId: string): void
   start(): void
+  submit(scene: Scene): void
+  vote(entryId: string): void
 }
 
 const PING_INTERVAL_MS = 3000
@@ -34,9 +46,17 @@ export function useClientRoom(roomCode: string, identity: Identity): ClientRoom 
   const [status, setStatus] = useState<ClientStatus>('connecting')
   const [phase, setPhase] = useState<Phase>('lobby')
   const [roundIndex, setRoundIndex] = useState(0)
+  const [totalRounds, setTotalRounds] = useState(0)
+  const [prompt, setPrompt] = useState('')
   const [players, setPlayers] = useState<PublicPlayer[]>([])
   const [you, setYou] = useState<PlayerId | null>(null)
   const [canStart, setCanStart] = useState(false)
+  const [deadline, setDeadline] = useState<number | null>(null)
+  const [ballot, setBallot] = useState<BallotEntry[]>([])
+  const [yourVote, setYourVote] = useState<string | null>(null)
+  const [youSubmitted, setYouSubmitted] = useState(false)
+  const [reveal, setReveal] = useState<RevealedEntry[]>([])
+  const [winners, setWinners] = useState<PlayerId[]>([])
   const [problem, setProblem] = useState<string | null>(null)
   const [clockOffset, setClockOffset] = useState(0)
 
@@ -70,8 +90,6 @@ export function useClientRoom(roomCode: string, identity: Identity): ClientRoom 
     const transport = createPeerClient(roomCode, {
       onOpen() {
         setProblem(null)
-        // If the player already chose a name, rejoin silently; otherwise sit
-        // in `ready` so the join form becomes usable.
         if (credentialsRef.current) {
           sendHello()
         } else {
@@ -88,9 +106,17 @@ export function useClientRoom(roomCode: string, identity: Identity): ClientRoom 
           case 'state':
             setPhase(message.phase)
             setRoundIndex(message.roundIndex)
+            setTotalRounds(message.totalRounds)
+            setPrompt(message.prompt)
             setPlayers(message.players)
             setYou(message.you)
             setCanStart(message.canStart)
+            setDeadline(message.deadline)
+            setBallot(message.ballot ?? [])
+            setYourVote(message.yourVote ?? null)
+            setYouSubmitted(message.youSubmitted)
+            setReveal(message.reveal ?? [])
+            setWinners(message.winners ?? [])
             break
           case 'pong': {
             const now = Date.now()
@@ -138,9 +164,36 @@ export function useClientRoom(roomCode: string, identity: Identity): ClientRoom 
     [identity, sendHello],
   )
 
-  const start = useCallback(() => {
-    transportRef.current?.send({ t: 'start' })
-  }, [])
+  const start = useCallback(() => transportRef.current?.send({ t: 'start' }), [])
+  const submit = useCallback(
+    (scene: Scene) => transportRef.current?.send({ t: 'submit', scene }),
+    [],
+  )
+  const vote = useCallback(
+    (entryId: string) => transportRef.current?.send({ t: 'vote', entryId }),
+    [],
+  )
 
-  return { status, phase, roundIndex, players, you, canStart, problem, clockOffset, join, start }
+  return {
+    status,
+    phase,
+    roundIndex,
+    totalRounds,
+    prompt,
+    players,
+    you,
+    canStart,
+    deadline,
+    ballot,
+    yourVote,
+    youSubmitted,
+    reveal,
+    winners,
+    problem,
+    clockOffset,
+    join,
+    start,
+    submit,
+    vote,
+  }
 }

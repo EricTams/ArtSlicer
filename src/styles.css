@@ -490,3 +490,207 @@ h3 {
   object-fit: contain;
   pointer-events: none;
 }
+
+/* ---------- rounds ---------- */
+
+.countdown {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 1.6rem;
+  color: var(--accent-2);
+}
+
+.countdown--huge {
+  font-size: clamp(2.5rem, 7vw, 5rem);
+}
+
+/* The last ten seconds are what people react to, so make them impossible
+   to miss from across a room. */
+.countdown--urgent {
+  color: var(--accent);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown--urgent {
+    animation: none;
+  }
+}
+
+.hostprompt {
+  font-size: clamp(2rem, 6vw, 4.5rem);
+  font-weight: 800;
+  color: var(--text);
+}
+
+.build {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+  padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+}
+
+.build__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.build__round {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.build__prompt {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.build__editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.build__editor .editor {
+  padding: 0;
+  flex: 1;
+}
+
+/* ---------- voting ---------- */
+
+.vote {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  min-height: 100%;
+}
+
+.vote__hint {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.vote__grid {
+  display: grid;
+  /* Bounded rather than 1fr: with a single entry on the ballot, stretching it
+     across a wide screen makes a tiny drawing look absurd. */
+  grid-template-columns: repeat(auto-fit, minmax(150px, 190px));
+  justify-content: center;
+  gap: 10px;
+}
+
+.vote__card {
+  appearance: none;
+  padding: 5px;
+  border-radius: 14px;
+  border: 3px solid var(--line);
+  background: var(--bg-raised);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  /* Konva draws at a fixed size; keep it from overflowing a narrow column. */
+  overflow: hidden;
+}
+
+.vote__card--on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-raised));
+}
+
+.vote__card canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------- gallery + scores ---------- */
+
+.gallery {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-content: flex-start;
+  justify-content: center;
+}
+
+.gallery__item {
+  background: var(--bg-raised);
+  border: 3px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gallery__item--win {
+  border-color: var(--warn);
+  box-shadow: 0 0 28px rgba(255, 196, 77, 0.28);
+}
+
+.gallery__caption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+}
+
+.scoreboard {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.scoreboard__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 18px 6px 6px;
+  font-weight: 700;
+}
+
+.scoreboard__score {
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.podium {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+}
+
+.podium__winner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 1.4rem;
+}
+
+.bigscore {
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--good);
+  margin: 0;
+}

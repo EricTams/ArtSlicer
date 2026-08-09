@@ -4,6 +4,9 @@ import { useParams } from 'react-router-dom'
 import { AVATARS, getAvatar } from '../shared/avatars'
 import { MAX_NAME_LENGTH, MIN_PLAYERS_TO_START, sanitizeName } from '../shared/gameState'
 import { isValidRoomCode, normalizeRoomCode } from '../shared/roomCode'
+import { usePiecesLoaded } from '../editor/usePiecesLoaded'
+import { BuildScreen } from './BuildScreen'
+import { VoteScreen } from './VoteScreen'
 import { loadIdentity } from './identity'
 import { useClientRoom } from './useClientRoom'
 
@@ -135,17 +138,7 @@ function Room({ roomCode, identity }: { roomCode: string; identity: ReturnType<t
   const avatar = getAvatar(me!.avatarId)
 
   if (room.phase !== 'lobby') {
-    return (
-      <div className="screen screen--center">
-        <div className="stack" style={{ alignItems: 'center' }}>
-          <span className="playerchip__avatar playerchip__avatar--big" style={{ background: avatar.color }}>
-            {avatar.glyph}
-          </span>
-          <h2>Round {room.roundIndex + 1}</h2>
-          <p className="muted">The build phase lands in M4.</p>
-        </div>
-      </div>
-    )
+    return <InGame room={room} avatarColor={avatar.color} glyph={avatar.glyph} />
   }
 
   return (
@@ -174,6 +167,93 @@ function Room({ roomCode, identity }: { roomCode: string; identity: ReturnType<t
         ) : (
           <p className="muted">Waiting for the first player to start…</p>
         )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Phone screens for a round in progress. Sprites must be decoded before the
+ * editor or the ballot can draw anything, so this gate covers both.
+ */
+function InGame({
+  room,
+  avatarColor,
+  glyph,
+}: {
+  room: ReturnType<typeof useClientRoom>
+  avatarColor: string
+  glyph: string
+}) {
+  const loaded = usePiecesLoaded()
+
+  if (!loaded) {
+    return (
+      <div className="screen screen--center">
+        <p className="tagline">Loading the junk…</p>
+      </div>
+    )
+  }
+
+  switch (room.phase) {
+    case 'building':
+      return (
+        <BuildScreen
+          prompt={room.prompt}
+          roundIndex={room.roundIndex}
+          totalRounds={room.totalRounds}
+          deadline={room.deadline}
+          clockOffset={room.clockOffset}
+          submitted={room.youSubmitted}
+          onSubmit={room.submit}
+        />
+      )
+
+    case 'voting':
+      return (
+        <VoteScreen
+          prompt={room.prompt}
+          ballot={room.ballot}
+          yourVote={room.yourVote}
+          deadline={room.deadline}
+          clockOffset={room.clockOffset}
+          onVote={room.vote}
+        />
+      )
+
+    case 'roundResults':
+    case 'finalResults':
+    default:
+      // Results are the shared-screen moment; phones just say where to look.
+      return <LookUp room={room} avatarColor={avatarColor} glyph={glyph} />
+  }
+}
+
+function LookUp({
+  room,
+  avatarColor,
+  glyph,
+}: {
+  room: ReturnType<typeof useClientRoom>
+  avatarColor: string
+  glyph: string
+}) {
+  const me = room.players.find((player) => player.id === room.you)
+  const final = room.phase === 'finalResults'
+  const roundPoints = room.reveal.find((entry) => entry.playerId === room.you)?.points ?? 0
+
+  return (
+    <div className="screen screen--center">
+      <div className="stack" style={{ alignItems: 'center' }}>
+        <span className="playerchip__avatar playerchip__avatar--big" style={{ background: avatarColor }}>
+          {glyph}
+        </span>
+        <h2>{final ? 'Game over' : 'Look at the big screen'}</h2>
+        {!final && roundPoints > 0 && <p className="bigscore">+{roundPoints}</p>}
+        {room.winners.includes(room.you ?? '') && !final && <p className="tagline">You won the round!</p>}
+        <p className="muted">
+          {me ? `${me.score} point${me.score === 1 ? '' : 's'}` : ''}
+        </p>
       </div>
     </div>
   )
