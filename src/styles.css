@@ -164,3 +164,127 @@ h3 {
 .muted {
   color: var(--text-dim);
 }
+
+/* ---------- host lobby ---------- */
+
+.lobby {
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+/* The host screen is a laptop, but keep it usable if the window is narrow. */
+@media (max-width: 860px) {
+  .lobby {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lobby__join {
+  align-items: center;
+  text-align: center;
+}
+
+.lobby__players {
+  height: 100%;
+}
+
+.roomcode {
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  /* Trailing letter-spacing would visually off-centre the code. */
+  text-indent: 0.2em;
+  margin: 0;
+  color: var(--accent-2);
+}
+
+.playerlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.playerchip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 16px 8px 8px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  transition: opacity 0.2s ease;
+}
+
+.playerchip__avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+  flex: none;
+}
+
+.playerchip__avatar--big {
+  width: 96px;
+  height: 96px;
+  font-size: 3rem;
+}
+
+.playerchip__name {
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playerchip__tag {
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  font-weight: 800;
+  color: var(--bg);
+  background: var(--accent-2);
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.playerchip__tag--dim {
+  background: var(--text-dim);
+}
+
+/* ---------- avatar picker ---------- */
+
+.avatargrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 10px;
+}
+
+.avatarbtn {
+  aspect-ratio: 1;
+  border-radius: 16px;
+  border: 3px solid transparent;
+  font-size: 2rem;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition: transform 0.08s ease, border-color 0.12s ease;
+}
+
+.avatarbtn--on {
+  border-color: var(--text);
+  transform: scale(1.06);
+}
+
+.avatarbtn:active {
+  transform: scale(0.95);
+}
