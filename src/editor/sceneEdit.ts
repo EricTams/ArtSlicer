@@ -13,7 +13,9 @@ import {
   type Tint,
   topZ,
 } from '../shared/scene'
-import { invertCut } from '../render/clip'
+import { clipPolygon, invertCut, polygonCentroid } from '../render/clip'
+import { getPiece } from '../render/pieces'
+import { apply, pieceMatrix } from '../render/transform'
 
 /**
  * Pure scene mutations. Keeping these out of React makes the editor's rules —
@@ -195,26 +197,52 @@ export function splitPiece(
   const nudge = 45 * piece.scale
   const direction = normalize(separation ?? { x: cut.nx, y: cut.ny })
 
-  const keep: Placed = {
-    ...piece,
-    cuts: [...existing, cut],
-    x: piece.x - direction.x * nudge,
-    y: piece.y - direction.y * nudge,
-  }
-  const offcut: Placed = {
-    ...piece,
-    id: newId,
-    cuts: [...existing, invertCut(cut)],
-    x: piece.x + direction.x * nudge,
-    y: piece.y + direction.y * nudge,
-    z: piece.z + 1,
-  }
+  const keep = nudged(recentre(piece, [...existing, cut]), direction, -nudge)
+  const offcut = nudged(
+    { ...recentre(piece, [...existing, invertCut(cut)]), id: newId, z: piece.z + 1 },
+    direction,
+    nudge,
+  )
 
   return { ...scene, pieces: [...scene.pieces.map((p) => (p.id === id ? keep : p)), offcut] }
 }
 
 export function setBackground(scene: Scene, color: string): Scene {
   return { ...scene, bg: color }
+}
+
+/**
+ * Applies a new set of cuts and moves the piece's origin to the middle of
+ * whatever survives them, without the piece appearing to move.
+ *
+ * Both halves of a slice need this. Left on the original sprite's centre, a
+ * thin offcut would turn and crush about a point outside itself, and its
+ * selection ring and handle would float in empty space beside it.
+ */
+function recentre(piece: Placed, cuts: Cut[]): Placed {
+  const def = getPiece(piece.pieceId)
+  if (!def) return { ...piece, cuts }
+
+  const polygon = clipPolygon(def.width, def.height, cuts)
+  // Nothing left of this side; leave the origin alone rather than divide by it.
+  if (polygon.length === 0) return { ...piece, cuts }
+
+  const pivot = polygonCentroid(polygon)
+  const previous = piece.pivot ?? { x: 0, y: 0 }
+
+  // Shifting the origin would slide the artwork, so cancel it out: the offset
+  // travels through the piece's own scale, rotation and squashes to reach the
+  // scene.
+  const shift = apply(pieceMatrix(piece), {
+    x: pivot.x - previous.x,
+    y: pivot.y - previous.y,
+  })
+
+  return { ...piece, cuts, pivot, x: piece.x + shift.x, y: piece.y + shift.y }
+}
+
+function nudged(piece: Placed, direction: { x: number; y: number }, amount: number): Placed {
+  return { ...piece, x: piece.x + direction.x * amount, y: piece.y + direction.y * amount }
 }
 
 function normalize(v: { x: number; y: number }): { x: number; y: number } {

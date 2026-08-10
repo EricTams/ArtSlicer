@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { type Point, clipPolygon, clipToHalfPlane, cutFromLine, invertCut } from './clip'
+import {
+  type Point,
+  clipPolygon,
+  clipToHalfPlane,
+  cutFromLine,
+  invertCut,
+  polygonCentroid,
+} from './clip'
 
 /** Shoelace area — a stable way to assert on a polygon's shape. */
 function area(points: Point[]): number {
@@ -97,5 +104,39 @@ describe('cutFromLine', () => {
   it('handles a diagonal drag', () => {
     const cut = cutFromLine({ x: -50, y: -50 }, { x: 50, y: 50 })!
     expect(area(clipPolygon(100, 100, [cut]))).toBeCloseTo(5000)
+  })
+})
+
+describe('polygonCentroid', () => {
+  it('finds the middle of a rectangle', () => {
+    const c = polygonCentroid(clipPolygon(100, 60, undefined))
+    expect(c.x).toBeCloseTo(0)
+    expect(c.y).toBeCloseTo(0)
+  })
+
+  it('follows the surviving half after a cut', () => {
+    // Keep x <= 0: the centre moves to the middle of that half.
+    const c = polygonCentroid(clipPolygon(100, 100, [{ nx: 1, ny: 0, d: 0 }]))
+    expect(c.x).toBeCloseTo(-25)
+    expect(c.y).toBeCloseTo(0)
+  })
+
+  it('weights by area, not by vertex count', () => {
+    // A triangle's centroid is a third of the way up, not half.
+    const c = polygonCentroid(clipPolygon(100, 100, [{ nx: 1, ny: 1, d: 0 }]))
+    expect(c.x).toBeCloseTo(-100 / 6, 1)
+    expect(c.y).toBeCloseTo(-100 / 6, 1)
+  })
+
+  it('handles an empty polygon rather than dividing by zero', () => {
+    expect(polygonCentroid([])).toEqual({ x: 0, y: 0 })
+  })
+
+  it('falls back to the mean for a degenerate sliver', () => {
+    const line: Point[] = [
+      { x: -10, y: 0 },
+      { x: 10, y: 0 },
+    ]
+    expect(polygonCentroid(line).x).toBeCloseTo(0)
   })
 })

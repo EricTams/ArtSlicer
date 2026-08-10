@@ -26,7 +26,12 @@ export function containsPoint(piece: Placed, x: number, y: number): boolean {
   // Fully collapsed: nothing left to hit.
   if (!matrix) return false
 
-  const local = apply(matrix, { x: x - piece.x, y: y - piece.y })
+  // Back into the sprite's own coordinates, where the bounds and cuts live.
+  const relative = apply(matrix, { x: x - piece.x, y: y - piece.y })
+  const local = {
+    x: relative.x + (piece.pivot?.x ?? 0),
+    y: relative.y + (piece.pivot?.y ?? 0),
+  }
 
   // Inside the sprite's box…
   if (Math.abs(local.x) > def.width / 2 || Math.abs(local.y) > def.height / 2) return false

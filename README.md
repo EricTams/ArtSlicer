@@ -123,6 +123,13 @@ line as the halves spring apart. They part perpendicular to the stroke **as
 drawn on screen** — the cut's own normal lives in the piece's frame and points
 somewhere else entirely once it has been turned or crushed.
 
+Each half also takes a new origin at the centre of what survived the cut, worked
+out as the area-weighted centroid of its clipped polygon. Left on the original
+sprite's centre, a thin offcut would turn and crush about a point outside
+itself, and its selection ring and handle would float in empty space beside it.
+The piece's position is adjusted by the same offset so recentring never slides
+the artwork — an invariant the tests assert directly.
+
 ### Squashing is stored as an axis, not a scale
 
 A piece springs back upright after being crushed, so a diagonal squash cannot be

@@ -64,13 +64,17 @@ export function PieceNode({
       onDragEnd={(e) => onDragEnd?.(piece.id, e.target.x(), e.target.y())}
     >
       <Squashed squashes={squashes}>
-        <ClippedSprite
-          piece={piece}
-          width={def.width}
-          height={def.height}
-          image={image}
-          clip={clip}
-        />
+        {/* Innermost, so scaling, rotating and crushing all happen about the
+            piece's own centre rather than the sprite's. */}
+        <Group x={-(piece.pivot?.x ?? 0)} y={-(piece.pivot?.y ?? 0)}>
+          <ClippedSprite
+            piece={piece}
+            width={def.width}
+            height={def.height}
+            image={image}
+            clip={clip}
+          />
+        </Group>
       </Squashed>
     </Group>
   )

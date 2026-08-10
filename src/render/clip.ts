@@ -109,6 +109,35 @@ export function cutFromLine(from: Point, to: Point): Cut | null {
   return { nx, ny, d: nx * from.x + ny * from.y }
 }
 
+/**
+ * Area-weighted centre of a convex polygon — where a cut-down piece actually
+ * balances, which is where it should turn and crush about.
+ */
+export function polygonCentroid(points: readonly Point[]): Point {
+  if (points.length === 0) return { x: 0, y: 0 }
+
+  let twiceArea = 0
+  let x = 0
+  let y = 0
+
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i]!
+    const b = points[(i + 1) % points.length]!
+    const cross = a.x * b.y - b.x * a.y
+    twiceArea += cross
+    x += (a.x + b.x) * cross
+    y += (a.y + b.y) * cross
+  }
+
+  // A degenerate sliver has no area to weight by; fall back to the mean.
+  if (Math.abs(twiceArea) < 1e-9) {
+    const mean = points.reduce((sum, p) => ({ x: sum.x + p.x, y: sum.y + p.y }), { x: 0, y: 0 })
+    return { x: mean.x / points.length, y: mean.y / points.length }
+  }
+
+  return { x: x / (3 * twiceArea), y: y / (3 * twiceArea) }
+}
+
 /** Flips which side of a cut is kept. */
 export function invertCut(cut: Cut): Cut {
   return { nx: -cut.nx, ny: -cut.ny, d: -cut.d }

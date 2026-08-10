@@ -108,10 +108,15 @@ export function SliceTool({
     const matrix = invert(pieceMatrix(piece))
     if (!matrix) return
 
-    // Screen → the piece's own coordinates, undoing scale, angle and squashes.
+    // Screen → the sprite's own coordinates, undoing scale, angle and squashes,
+    // then adding back the pivot — cuts are stored against the sprite, not
+    // against wherever this piece's centre has been moved to.
     const toScene = DESIGN_SIZE / STAGE
-    const toLocal = (p: Point): Point =>
-      apply(matrix, { x: (p.x - centre.x) * toScene, y: (p.y - centre.y) * toScene })
+    const pivot = piece.pivot ?? { x: 0, y: 0 }
+    const toLocal = (p: Point): Point => {
+      const local = apply(matrix, { x: (p.x - centre.x) * toScene, y: (p.y - centre.y) * toScene })
+      return { x: local.x + pivot.x, y: local.y + pivot.y }
+    }
 
     const cut = cutFromLine(toLocal(from), toLocal(to))
     if (!cut) return

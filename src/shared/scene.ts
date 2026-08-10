@@ -65,6 +65,15 @@ export interface Placed {
   squashes?: Squash[]
   tint?: Tint
   cuts?: Cut[]
+  /**
+   * Which point of the sprite the piece's x/y refers to, in sprite-local
+   * coordinates. Defaults to the sprite's middle.
+   *
+   * Slicing moves it to the centre of whatever survived the cut, so a sliver
+   * turns and crushes about itself rather than about the middle of the whole
+   * shape it was cut from — which, for a thin offcut, is a point outside it.
+   */
+  pivot?: { x: number; y: number }
   z: number
 }
 
@@ -148,6 +157,19 @@ function sanitizePlaced(input: unknown, isKnownPiece: (id: string) => boolean): 
   }
 
   if (raw['flipX'] === true) piece.flipX = true
+
+  const pivot = raw['pivot']
+  if (typeof pivot === 'object' && pivot !== null) {
+    const px = num((pivot as Record<string, unknown>)['x'])
+    const py = num((pivot as Record<string, unknown>)['y'])
+    // Bounded by the largest sprite that could plausibly be in the manifest.
+    if (px !== null && py !== null) {
+      piece.pivot = {
+        x: clamp(px, -DESIGN_SIZE, DESIGN_SIZE),
+        y: clamp(py, -DESIGN_SIZE, DESIGN_SIZE),
+      }
+    }
+  }
 
   const tint = sanitizeTint(raw['tint'])
   if (tint) piece.tint = tint

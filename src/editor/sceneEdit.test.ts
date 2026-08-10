@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { apply, pieceMatrix } from '../render/transform'
 import {
   MAX_CUTS_PER_PIECE,
   MAX_PIECES,
@@ -7,6 +8,7 @@ import {
   MAX_SQUASHES_PER_PIECE,
   MAX_SCALE,
   MIN_SCALE,
+  type Placed,
   type Scene,
   emptyScene,
 } from '../shared/scene'
@@ -32,6 +34,18 @@ import {
 
 const CUT = { nx: 1, ny: 0, d: 0 }
 const SQUASH = { angle: 0, factor: 2 }
+/** How far splitPiece pushes the halves apart, per unit of scale. */
+const NUDGE = 45
+
+/**
+ * Where the sprite's own centre lands in the scene. Invariant under
+ * recentring: only the nudge should move it.
+ */
+function spriteOrigin(piece: Placed): { x: number; y: number } {
+  const pivot = piece.pivot ?? { x: 0, y: 0 }
+  const offset = apply(pieceMatrix(piece), { x: -pivot.x, y: -pivot.y })
+  return { x: piece.x + offset.x, y: piece.y + offset.y }
+}
 
 function withPiece(id = 'a'): Scene {
   return addPiece(emptyScene(), 'disc', id)
@@ -208,6 +222,39 @@ describe('slicing splits a piece in two', () => {
 
     expect(scene.pieces[0]!.y).toBeLessThan(scene.pieces[1]!.y)
     expect(scene.pieces[0]!.x).toBeCloseTo(scene.pieces[1]!.x)
+  })
+
+  it('moves each half’s centre onto the part that survived', () => {
+    const scene = splitPiece(withPiece(), 'a', CUT, 'b')
+
+    // The disc is 256 wide, so each half balances a quarter-width off centre.
+    expect(scene.pieces[0]!.pivot!.x).toBeCloseTo(-256 / 4, 0)
+    expect(scene.pieces[1]!.pivot!.x).toBeCloseTo(256 / 4, 0)
+  })
+
+  it('does not let recentring slide the artwork', () => {
+    const before = withPiece().pieces[0]!
+    const scene = splitPiece(withPiece(), 'a', CUT, 'b')
+
+    // Moving the origin must not move the picture. The sprite should sit
+    // exactly where it did, offset only by the deliberate nudge.
+    for (const half of scene.pieces) {
+      const drift = spriteOrigin(half)
+      expect(Math.hypot(drift.x - before.x, drift.y - before.y)).toBeCloseTo(NUDGE, 1)
+    }
+  })
+
+  it('carries the piece’s own scale and angle into the recentring', () => {
+    const turned = transformPiece(withPiece(), 'a', 2, Math.PI / 2)
+    const before = turned.pieces[0]!
+    const scene = splitPiece(turned, 'a', CUT, 'b')
+
+    // Same invariant through a rotation and a scale — the nudge grows with the
+    // piece, and nothing else shifts.
+    for (const half of scene.pieces) {
+      const drift = spriteOrigin(half)
+      expect(Math.hypot(drift.x - before.x, drift.y - before.y)).toBeCloseTo(NUDGE * 2, 1)
+    }
   })
 
   it('accepts an unnormalised direction', () => {
