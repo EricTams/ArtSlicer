@@ -1,4 +1,5 @@
 import type { Tint } from '../shared/scene'
+import { type Rgb, colorizePixel } from './colorize'
 
 /**
  * Pre-tinted sprite cache.
@@ -40,7 +41,7 @@ export function tinted(pieceId: string, image: TintSource, tint: Tint | undefine
     return hit
   }
 
-  const built = build(image, `rgb(${r},${g},${b})`, amount)
+  const built = build(image, [r, g, b], amount)
   // A zero-sized source (image not decoded yet) would poison the cache.
   if (!built) return image
 
@@ -52,7 +53,15 @@ export function tinted(pieceId: string, image: TintSource, tint: Tint | undefine
   return built
 }
 
-function build(image: TintSource, color: string, amount: number): HTMLCanvasElement | null {
+/**
+ * Recolours the sprite pixel by pixel.
+ *
+ * Done by hand rather than with canvas blend modes or `ctx.filter`: the result
+ * has to be a genuine recolour that works on artwork of any colour, and filter
+ * support on older mobile Safari is patchy. It runs once per (sprite, colour,
+ * strength) and is then cached, so the cost never reaches a frame.
+ */
+function build(image: TintSource, target: Rgb, amount: number): HTMLCanvasElement | null {
   const width = image instanceof HTMLImageElement ? image.naturalWidth : image.width
   const height = image instanceof HTMLImageElement ? image.naturalHeight : image.height
   if (!width || !height) return null
@@ -60,28 +69,31 @@ function build(image: TintSource, color: string, amount: number): HTMLCanvasElem
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) return null
 
-  // 1. The sprite as drawn.
   ctx.drawImage(image, 0, 0)
 
-  // 2. Multiply the colour through it, at the strength it was sprayed.
-  //    Multiply (rather than a flat fill) preserves the sprite's shading
-  //    instead of flattening it to a silhouette, and the alpha is what makes a
-  //    light spray a tint rather than a repaint.
-  ctx.globalCompositeOperation = 'multiply'
-  ctx.globalAlpha = amount
-  ctx.fillStyle = color
-  ctx.fillRect(0, 0, width, height)
+  let pixels: ImageData
+  try {
+    pixels = ctx.getImageData(0, 0, width, height)
+  } catch {
+    // A tainted canvas cannot be read back. Sprites are same-origin so this
+    // should not happen, but an unpainted piece beats a broken one.
+    return null
+  }
 
-  // 3. Multiply also painted the transparent regions, so mask back to the
-  //    sprite's original alpha.
-  ctx.globalAlpha = 1
-  ctx.globalCompositeOperation = 'destination-in'
-  ctx.drawImage(image, 0, 0)
+  const data = pixels.data
+  for (let i = 0; i < data.length; i += 4) {
+    // Fully transparent pixels have no colour worth recolouring.
+    if (data[i + 3] === 0) continue
+    const [r, g, b] = colorizePixel(data[i]!, data[i + 1]!, data[i + 2]!, target, amount)
+    data[i] = r
+    data[i + 1] = g
+    data[i + 2] = b
+  }
 
-  ctx.globalCompositeOperation = 'source-over'
+  ctx.putImageData(pixels, 0, 0)
   return canvas
 }
 

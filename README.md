@@ -152,15 +152,20 @@ nesting and only distinct axes count against the per-piece limit.
 
 ### Tinting
 
-Colours are mixed by hand, so any spray can produce a new one. Each (sprite,
-colour, strength) combination is composited once into a cached canvas — quantised
-so near-identical shades share an entry, and bounded by an LRU so a long game
-cannot accumulate hundreds of them. Konva's per-node filters were far too slow on
-a phone. The blend is `multiply` at the sprayed strength, which preserves the
-sprite's shading instead of flattening it to a silhouette.
+Paint drives the sprayed colour by each pixel's brightness, so the sprite's
+shading and line work survive but the hue genuinely changes. Multiplying the
+paint over the sprite — the obvious approach, and what this used to do — can only
+ever darken: spraying blue onto a red car gives near-black rather than purple,
+which rules out artwork with strong colours of its own.
 
-> **This constrains the art.** Multiply can only darken, so source PNGs must be
-> drawn **light** — near-white with soft grey shading. See below.
+It is done pixel by pixel rather than with canvas blend modes or `ctx.filter`,
+whose support on older mobile Safari is patchy. Each (sprite, colour, strength)
+combination runs once and is cached — quantised so near-identical shades share an
+entry, bounded by an LRU so a long game cannot accumulate hundreds — so the cost
+never lands in a frame. Konva's per-node filters were far too slow on a phone.
+
+**Art can be any colour.** The only thing worth avoiding is near-black artwork,
+which has no brightness to carry a colour and so barely changes when painted.
 
 ---
 
@@ -198,8 +203,9 @@ npm run pieces:placeholder  # regenerate the placeholder art, then the manifest
 ```
 
 The current art is placeholder, generated from signed distance fields by
-`scripts/make-placeholder-pieces.mjs`. Real art is a drop-in replacement as long
-as it follows the light-toned spec above.
+`scripts/make-placeholder-pieces.mjs`. Real art is a drop-in replacement: any
+transparent-background PNG works, in any colour, at any size the tray can show
+(the placeholders are 256×256). Nothing else needs to change.
 
 ---
 
