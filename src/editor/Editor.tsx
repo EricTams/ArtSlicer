@@ -188,8 +188,16 @@ export function Editor({ initialScene, onChange }: Props) {
       {selected && screen === 'slice' && (
         <SliceTool
           piece={selected}
-          onCommit={(cut: Cut) => {
-            commit(splitPiece(sceneRef.current, selected.id, cut, crypto.randomUUID().slice(0, 8)))
+          onCommit={(cut: Cut, separation) => {
+            commit(
+              splitPiece(
+                sceneRef.current,
+                selected.id,
+                cut,
+                crypto.randomUUID().slice(0, 8),
+                separation,
+              ),
+            )
             setScreen('canvas')
           }}
           onCancel={() => setScreen('canvas')}

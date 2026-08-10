@@ -167,10 +167,20 @@ export function clearSquashes(scene: Scene, id: string): Scene {
 
 /**
  * A cut splits one piece into two independent pieces — each keeps the same
- * colour, squashes and angle, and takes opposite sides of the cut. They are
- * nudged apart along the cut normal so it's visible that something happened.
+ * colour, squashes and angle, and takes opposite sides of the cut.
+ *
+ * `separation` is the direction to nudge the halves apart, in scene space. The
+ * cut's own normal lives in the piece's frame, which points somewhere else
+ * entirely once the piece has been turned or crushed, so the caller passes the
+ * direction it drew on screen.
  */
-export function splitPiece(scene: Scene, id: string, cut: Cut, newId: string): Scene {
+export function splitPiece(
+  scene: Scene,
+  id: string,
+  cut: Cut,
+  newId: string,
+  separation?: { x: number; y: number },
+): Scene {
   const piece = find(scene, id)
   if (!piece) return scene
 
@@ -183,18 +193,20 @@ export function splitPiece(scene: Scene, id: string, cut: Cut, newId: string): S
   // Enough that the two halves visibly separate — otherwise a clean cut looks
   // like nothing happened — without flinging them apart.
   const nudge = 45 * piece.scale
+  const direction = normalize(separation ?? { x: cut.nx, y: cut.ny })
+
   const keep: Placed = {
     ...piece,
     cuts: [...existing, cut],
-    x: piece.x - cut.nx * nudge,
-    y: piece.y - cut.ny * nudge,
+    x: piece.x - direction.x * nudge,
+    y: piece.y - direction.y * nudge,
   }
   const offcut: Placed = {
     ...piece,
     id: newId,
     cuts: [...existing, invertCut(cut)],
-    x: piece.x + cut.nx * nudge,
-    y: piece.y + cut.ny * nudge,
+    x: piece.x + direction.x * nudge,
+    y: piece.y + direction.y * nudge,
     z: piece.z + 1,
   }
 
@@ -203,6 +215,11 @@ export function splitPiece(scene: Scene, id: string, cut: Cut, newId: string): S
 
 export function setBackground(scene: Scene, color: string): Scene {
   return { ...scene, bg: color }
+}
+
+function normalize(v: { x: number; y: number }): { x: number; y: number } {
+  const length = Math.hypot(v.x, v.y)
+  return length < 1e-6 ? { x: 1, y: 0 } : { x: v.x / length, y: v.y / length }
 }
 
 function find(scene: Scene, id: string): Placed | undefined {

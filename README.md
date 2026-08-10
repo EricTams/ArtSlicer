@@ -7,8 +7,8 @@ best.
 
 The tools are physical rather than abstract: you **mix paint** by squeezing
 tubes into a jar and holding a spray button, **squish** a part by swiping
-through it so crusher jaws close along your swing, and **slice** it by tossing
-it in the air and flicking your finger through it.
+through it so crusher jaws close along your swing, and **slice** it by swiping a
+blade across it.
 
 **Play:** https://erictams.github.io/ArtSlicer/
 
@@ -101,12 +101,18 @@ its left.
 
 ### Slicing splits a piece in two
 
-A flick is mapped back through the piece's full transform into its own
+A swipe is mapped back through the piece's full transform into its own
 coordinates, then stored as a half-plane; the visible shape is the piece's
 rectangle trimmed against every cut it carries. Half-plane intersections are
 always convex, so a small Sutherland–Hodgman pass is exact. One piece becomes
 two, taking opposite sides of the cut, which makes slicing a way to *create*
 parts rather than only trim them.
+
+A piece quietly becoming two pieces reads as nothing happening, so the cut is
+drawn: a blade trail with a dashed guide while you aim, then a flash along the
+line as the halves spring apart. They part perpendicular to the stroke **as
+drawn on screen** — the cut's own normal lives in the piece's frame and points
+somewhere else entirely once it has been turned or crushed.
 
 ### Squashing is stored as an axis, not a scale
 

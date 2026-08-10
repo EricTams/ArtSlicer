@@ -200,6 +200,23 @@ describe('slicing splits a piece in two', () => {
     expect(scene.pieces[0]!.x).toBeLessThan(scene.pieces[1]!.x)
   })
 
+  it('parts the halves the way the caller drew, not along the cut’s own normal', () => {
+    // The cut's normal points along x, but a turned piece was sliced with a
+    // stroke that runs the other way on screen.
+    const turned = transformPiece(withPiece(), 'a', 1, Math.PI / 2)
+    const scene = splitPiece(turned, 'a', CUT, 'b', { x: 0, y: 1 })
+
+    expect(scene.pieces[0]!.y).toBeLessThan(scene.pieces[1]!.y)
+    expect(scene.pieces[0]!.x).toBeCloseTo(scene.pieces[1]!.x)
+  })
+
+  it('accepts an unnormalised direction', () => {
+    const scene = splitPiece(withPiece(), 'a', CUT, 'b', { x: 0, y: 40 })
+    const gap = Math.abs(scene.pieces[0]!.y - scene.pieces[1]!.y)
+    // Same spread as a unit vector would give, not 40x it.
+    expect(gap).toBeCloseTo(90)
+  })
+
   it('refuses when there is no room for the second half', () => {
     let scene = emptyScene()
     for (let i = 0; i < MAX_PIECES; i++) scene = addPiece(scene, 'disc', `p${i}`)

@@ -1,30 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { type Point, cutFromLine } from '../../render/clip'
-import { apply, invert, pieceMatrix } from '../../render/transform'
+import { type Point, cutFromLine, invertCut } from '../../render/clip'
 import { getPiece } from '../../render/pieces'
-import type { Cut, Placed } from '../../shared/scene'
+import { apply, invert, pieceMatrix } from '../../render/transform'
+import { DESIGN_SIZE, type Cut, type Placed } from '../../shared/scene'
 import { capturePointer } from '../pointer'
-import { PiecePreview, ToolShell } from './ToolShell'
+import { PieceStage, ToolShell } from './ToolShell'
 
 const STAGE = 300
-/**
- * Long enough that the flick is a matter of aim rather than reflexes. The arc
- * slows near the apex, so most of this is usable hang time.
- */
-const TOSS_MS = 2400
-/** How high the toss carries the piece, as a fraction of the stage. */
-const TOSS_HEIGHT = 0.34
-const SPIN_RADIANS = 0.9
-/** A flick shorter than this is a tap, not a cut. */
-const MIN_FLICK = 40
+/** A swipe shorter than this is a tap, not a cut. */
+const MIN_SWIPE = 36
+/** How long the halves take to spring apart, in ms. */
+const CUT_MS = 520
+/** How far apart they end up, in scene units. */
+const CUT_SPREAD = 130
 
-type Phase = 'ready' | 'airborne' | 'cut'
+interface Result {
+  cut: Cut
+  /** Perpendicular to the swipe, in scene space — the way the halves part. */
+  normal: Point
+  line: { from: Point; to: Point }
+}
 
 /**
- * Slicing, as a physical act: toss the piece up and flick through it while
- * it's in the air. The cut splits it into two pieces you can then treat
- * separately, so slicing makes parts rather than just trimming them.
+ * Slicing: aim a swipe across the piece and it comes apart into two you can
+ * move, colour and squish separately. The cut is drawn as a blade trail while
+ * you aim and a flash along the line when it lands, because a piece quietly
+ * becoming two pieces reads as nothing happening at all.
  */
 export function SliceTool({
   piece,
@@ -32,36 +34,17 @@ export function SliceTool({
   onCancel,
 }: {
   piece: Placed
-  onCommit(cut: Cut): void
+  onCommit(cut: Cut, separation: Point): void
   onCancel(): void
 }) {
-  const [phase, setPhase] = useState<Phase>('ready')
-  const [t, setT] = useState(0)
-  const [flick, setFlick] = useState<{ from: Point; to: Point } | null>(null)
+  const [drag, setDrag] = useState<{ from: Point; to: Point } | null>(null)
+  const [result, setResult] = useState<Result | null>(null)
   const [missed, setMissed] = useState(false)
+  /** 0 → 1 as the halves come apart. */
+  const [progress, setProgress] = useState(0)
 
   const start = useRef<Point | null>(null)
   const frame = useRef<number | null>(null)
-
-  const toss = useCallback(() => {
-    setMissed(false)
-    setFlick(null)
-    setPhase('airborne')
-
-    const began = performance.now()
-    const step = (now: number): void => {
-      const progress = (now - began) / TOSS_MS
-      if (progress >= 1) {
-        setT(0)
-        setPhase('ready')
-        frame.current = null
-        return
-      }
-      setT(progress)
-      frame.current = requestAnimationFrame(step)
-    }
-    frame.current = requestAnimationFrame(step)
-  }, [])
 
   useEffect(
     () => () => {
@@ -70,75 +53,75 @@ export function SliceTool({
     [],
   )
 
-  // A simple arc: up, then back down.
-  const lift = phase === 'airborne' ? Math.sin(Math.PI * t) * STAGE * TOSS_HEIGHT : 0
-  const spin = phase === 'airborne' ? t * SPIN_RADIANS : 0
-  const shownRotation = piece.rotation + spin
+  const play = useCallback(() => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current)
+    const began = performance.now()
 
-  const handleFlick = (from: Point, to: Point): void => {
-    if (phase !== 'airborne') return
-    if (Math.hypot(to.x - from.x, to.y - from.y) < MIN_FLICK) return
+    const step = (now: number): void => {
+      const t = Math.min(1, (now - began) / CUT_MS)
+      // Fast out, easing to a stop — a cut snaps apart, it doesn't drift.
+      setProgress(1 - (1 - t) ** 3)
+      if (t < 1) frame.current = requestAnimationFrame(step)
+      else frame.current = null
+    }
+    frame.current = requestAnimationFrame(step)
+  }, [])
 
-    // Where the piece actually is at this instant.
-    const centre = { x: STAGE / 2, y: STAGE / 2 - lift }
+  const attempt = (from: Point, to: Point): void => {
+    if (Math.hypot(to.x - from.x, to.y - from.y) < MIN_SWIPE) return
+
+    const centre = { x: STAGE / 2, y: STAGE / 2 }
     const def = getPiece(piece.pieceId)
-    const radius = def ? (Math.max(def.width, def.height) / 2) * piece.scale * (STAGE / 1000) : 60
+    const radius = def
+      ? (Math.max(def.width, def.height) / 2) * piece.scale * (STAGE / DESIGN_SIZE)
+      : 60
 
-    // Did the flick pass through the piece, or miss it entirely?
-    if (distanceToLine(centre, from, to) > radius * 1.3) {
+    // Did the swipe pass through the piece, or sail past it?
+    if (distanceToLine(centre, from, to) > radius * 1.35) {
       setMissed(true)
+      setResult(null)
       return
     }
 
-    const matrix = invert(pieceMatrix(piece, shownRotation))
+    const matrix = invert(pieceMatrix(piece))
     if (!matrix) return
 
     // Screen → the piece's own coordinates, undoing scale, angle and squashes.
-    const scale = 1000 / STAGE
+    const toScene = DESIGN_SIZE / STAGE
     const toLocal = (p: Point): Point =>
-      apply(matrix, { x: (p.x - centre.x) * scale, y: (p.y - centre.y) * scale })
+      apply(matrix, { x: (p.x - centre.x) * toScene, y: (p.y - centre.y) * toScene })
 
     const cut = cutFromLine(toLocal(from), toLocal(to))
     if (!cut) return
 
-    if (frame.current !== null) cancelAnimationFrame(frame.current)
-    frame.current = null
-    setFlick({ from, to })
-    setPhase('cut')
+    // The halves part perpendicular to the swipe as drawn on screen, which is
+    // scene space — the cut's own normal points elsewhere once the piece is
+    // turned or crushed.
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const length = Math.hypot(dx, dy)
+
+    setMissed(false)
+    setProgress(0)
+    setResult({ cut, normal: { x: -dy / length, y: dx / length }, line: { from, to } })
+    play()
   }
+
+  const halves = result ? previewHalves(piece, result, progress) : [centred(piece)]
 
   return (
     <ToolShell
       title="Slice"
       hint={
-        phase === 'cut'
-          ? 'Clean cut. Both halves drop back onto your picture.'
-          : phase === 'airborne'
-            ? missed
-              ? 'Missed! Flick right through it.'
-              : 'Now — flick across it!'
-            : 'Toss it up, then flick your finger through it.'
+        result
+          ? 'Two pieces. Swipe again to re-cut, or keep them.'
+          : missed
+            ? 'Missed — swipe straight through it.'
+            : 'Swipe across the art to cut it in two.'
       }
       onCancel={onCancel}
-      onDone={() => {
-        if (phase !== 'cut') {
-          onCancel()
-          return
-        }
-        const matrix = invert(pieceMatrix(piece, shownRotation))
-        const centre = { x: STAGE / 2, y: STAGE / 2 - lift }
-        const scale = 1000 / STAGE
-        if (!matrix || !flick) {
-          onCancel()
-          return
-        }
-        const toLocal = (p: Point): Point =>
-          apply(matrix, { x: (p.x - centre.x) * scale, y: (p.y - centre.y) * scale })
-        const cut = cutFromLine(toLocal(flick.from), toLocal(flick.to))
-        if (cut) onCommit(cut)
-        else onCancel()
-      }}
-      doneLabel={phase === 'cut' ? 'Keep both' : 'Done'}
+      onDone={() => (result ? onCommit(result.cut, result.normal) : onCancel())}
+      doneLabel={result ? 'Keep both' : 'Done'}
     >
       <div className="slice">
         <div
@@ -147,45 +130,127 @@ export function SliceTool({
           onPointerDown={(event) => {
             const rect = event.currentTarget.getBoundingClientRect()
             start.current = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+            setDrag({ from: start.current, to: start.current })
             capturePointer(event)
+          }}
+          onPointerMove={(event) => {
+            const from = start.current
+            if (!from) return
+            const rect = event.currentTarget.getBoundingClientRect()
+            setDrag({ from, to: { x: event.clientX - rect.left, y: event.clientY - rect.top } })
           }}
           onPointerUp={(event) => {
             const from = start.current
             start.current = null
+            setDrag(null)
             if (!from) return
             const rect = event.currentTarget.getBoundingClientRect()
-            handleFlick(from, { x: event.clientX - rect.left, y: event.clientY - rect.top })
+            attempt(from, { x: event.clientX - rect.left, y: event.clientY - rect.top })
+          }}
+          onPointerCancel={() => {
+            start.current = null
+            setDrag(null)
           }}
         >
-          <div className="slice__art" style={{ transform: `translateY(${-lift}px)` }}>
-            <PiecePreview piece={piece} size={STAGE} rotation={shownRotation} />
+          <div className="slice__art">
+            <PieceStage pieces={halves} size={STAGE} />
           </div>
 
-          {flick && (
-            <svg className="slice__flick" width={STAGE} height={STAGE}>
-              <line
-                x1={flick.from.x}
-                y1={flick.from.y}
-                x2={flick.to.x}
-                y2={flick.to.y}
-                stroke="#ffffff"
-                strokeWidth={3}
-              />
-            </svg>
-          )}
-        </div>
+          {/* The blade while aiming. */}
+          {drag && <Blade from={drag.from} to={drag.to} />}
 
-        <button
-          type="button"
-          className="btn btn--wide"
-          onClick={toss}
-          disabled={phase === 'airborne'}
-        >
-          {phase === 'cut' ? 'Toss again' : phase === 'airborne' ? 'In the air…' : 'Toss it up'}
-        </button>
+          {/* The flash along the cut, fading as the halves part. */}
+          {result && progress < 1 && <Slash line={result.line} fade={progress} />}
+        </div>
       </div>
     </ToolShell>
   )
+}
+
+function centred(piece: Placed): Placed {
+  return { ...piece, x: DESIGN_SIZE / 2, y: DESIGN_SIZE / 2 }
+}
+
+/** The two halves, drifting apart along the cut as the animation runs. */
+function previewHalves(piece: Placed, result: Result, progress: number): Placed[] {
+  const spread = CUT_SPREAD * progress * piece.scale
+  const existing = piece.cuts ?? []
+  const base = centred(piece)
+
+  return [
+    {
+      ...base,
+      id: `${piece.id}-a`,
+      cuts: [...existing, result.cut],
+      x: base.x - result.normal.x * spread,
+      y: base.y - result.normal.y * spread,
+    },
+    {
+      ...base,
+      id: `${piece.id}-b`,
+      cuts: [...existing, invertCut(result.cut)],
+      x: base.x + result.normal.x * spread,
+      y: base.y + result.normal.y * spread,
+    },
+  ]
+}
+
+/** The line you're about to cut along, drawn right across the piece. */
+function Blade({ from, to }: { from: Point; to: Point }) {
+  const extended = extend(from, to)
+  if (!extended) return null
+
+  return (
+    <svg className="slice__blade" width={STAGE} height={STAGE}>
+      <line
+        x1={extended.from.x}
+        y1={extended.from.y}
+        x2={extended.to.x}
+        y2={extended.to.y}
+        className="slice__blade-guide"
+      />
+      <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} className="slice__blade-edge" />
+    </svg>
+  )
+}
+
+/** The flash when the cut lands. */
+function Slash({ line, fade }: { line: { from: Point; to: Point }; fade: number }) {
+  const extended = extend(line.from, line.to)
+  if (!extended) return null
+
+  const ends = {
+    x1: extended.from.x,
+    y1: extended.from.y,
+    x2: extended.to.x,
+    y2: extended.to.y,
+  }
+
+  return (
+    // Squared rather than linear, so it stays bright through the moment the
+    // halves separate and only then drops away.
+    <svg className="slice__blade" width={STAGE} height={STAGE} style={{ opacity: 1 - fade ** 2 }}>
+      <line {...ends} className="slice__slash-halo" strokeWidth={70 * (1 - fade) + 6} />
+      <line {...ends} className="slice__slash-glow" strokeWidth={26 * (1 - fade) + 4} />
+      {/* A hot core that thins to nothing, like a blade pulling away. */}
+      <line {...ends} className="slice__slash-core" strokeWidth={7 * (1 - fade) + 1} />
+    </svg>
+  )
+}
+
+/** Stretches a segment past both ends, so the cut reads as an infinite line. */
+function extend(from: Point, to: Point): { from: Point; to: Point } | null {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const length = Math.hypot(dx, dy)
+  if (length < 1) return null
+
+  const ux = (dx / length) * STAGE
+  const uy = (dy / length) * STAGE
+  return {
+    from: { x: from.x - ux, y: from.y - uy },
+    to: { x: to.x + ux, y: to.y + uy },
+  }
 }
 
 /** Perpendicular distance from a point to the infinite line through a→b. */

@@ -38,9 +38,41 @@ export function ToolShell({
 }
 
 /**
- * One piece, centred, drawn with the real renderer so a tool's preview is the
- * actual result rather than an approximation of it.
+ * Any number of pieces at their own positions, drawn with the real renderer so
+ * a tool's preview is the actual result rather than an approximation of it.
  */
+export function PieceStage({
+  pieces,
+  size,
+  rotation,
+  extraSquashes,
+}: {
+  pieces: readonly Placed[]
+  size: number
+  /** Overrides each piece's own angle, for tools that turn it while previewing. */
+  rotation?: number
+  /** Not yet committed, so a tool can preview what it is about to apply. */
+  extraSquashes?: readonly Squash[]
+}) {
+  const scale = size / DESIGN_SIZE
+
+  return (
+    <Stage width={size} height={size} scaleX={scale} scaleY={scale} listening={false}>
+      <Layer listening={false}>
+        {pieces.map((piece) => (
+          <PieceNode
+            key={piece.id}
+            piece={piece}
+            overrideRotation={rotation}
+            extraSquashes={extraSquashes}
+          />
+        ))}
+      </Layer>
+    </Stage>
+  )
+}
+
+/** The common case: one piece, centred. */
 export function PiecePreview({
   piece,
   size,
@@ -49,19 +81,11 @@ export function PiecePreview({
 }: {
   piece: Placed
   size: number
-  /** Overrides the piece's own angle — the squish tool spins it to aim. */
   rotation?: number
-  /** Not yet committed, so a tool can preview what it is about to apply. */
   extraSquashes?: readonly Squash[]
 }) {
   const centred: Placed = { ...piece, x: DESIGN_SIZE / 2, y: DESIGN_SIZE / 2 }
-  const scale = size / DESIGN_SIZE
-
   return (
-    <Stage width={size} height={size} scaleX={scale} scaleY={scale} listening={false}>
-      <Layer listening={false}>
-        <PieceNode piece={centred} overrideRotation={rotation} extraSquashes={extraSquashes} />
-      </Layer>
-    </Stage>
+    <PieceStage pieces={[centred]} size={size} rotation={rotation} extraSquashes={extraSquashes} />
   )
 }

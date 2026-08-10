@@ -1052,10 +1052,45 @@ h3 {
   transition: transform 0.03s linear;
 }
 
-.slice__flick {
+.slice__blade {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+/* The faint full-width line shows where the cut will land; the bright segment
+   is the stroke the finger is actually making. */
+.slice__blade-guide {
+  stroke: rgba(255, 77, 141, 0.45);
+  stroke-width: 2;
+  stroke-dasharray: 10 8;
+}
+
+.slice__blade-edge {
+  stroke: #ff4d8d;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.slice__slash-halo {
+  stroke: rgba(255, 77, 141, 0.22);
+  stroke-linecap: round;
+}
+
+.slice__slash-glow {
+  stroke: #ff4d8d;
+  stroke-linecap: round;
+}
+
+.slice__slash-core {
+  stroke: #ffffff;
+  stroke-linecap: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slice__slash-halo {
+    display: none;
+  }
 }
 
 .slice .btn {
