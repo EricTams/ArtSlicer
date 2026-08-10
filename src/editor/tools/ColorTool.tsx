@@ -26,16 +26,17 @@ export function ColorTool({
   jar,
   onJarChange,
   onSpray,
-  onDone,
-  onCancel,
+  onSprayEnd,
+  onClose,
 }: {
   piece: Placed
   /** Held by the editor so a mixed colour survives across pieces. */
   jar: Jar
   onJarChange(jar: Jar): void
   onSpray(color: string, delta: number): void
-  onDone(): void
-  onCancel(): void
+  /** One hold of the spray button is one undo step, however long it ran. */
+  onSprayEnd(): void
+  onClose(): void
 }) {
   const color = mixedColor(jar)
   const empty = jarIsEmpty(jar)
@@ -49,8 +50,7 @@ export function ColorTool({
           ? 'Drag down on the tubes to squeeze paint into the jar.'
           : 'Hold SPRAY. The longer you hold, the stronger it gets.'
       }
-      onCancel={onCancel}
-      onDone={onDone}
+      onClose={onClose}
     >
       <div className="paint">
         <div className="paint__stage">
@@ -81,7 +81,7 @@ export function ColorTool({
           </button>
         </div>
 
-        <SprayButton disabled={empty} color={color} onSpray={onSpray} />
+        <SprayButton disabled={empty} color={color} onSpray={onSpray} onSprayEnd={onSprayEnd} />
       </div>
     </ToolShell>
   )
@@ -165,20 +165,25 @@ function SprayButton({
   disabled,
   color,
   onSpray,
+  onSprayEnd,
 }: {
   disabled: boolean
   color: string
   onSpray(color: string, delta: number): void
+  onSprayEnd(): void
 }) {
   const [spraying, setSpraying] = useState(false)
   const frame = useRef<number | null>(null)
   const last = useRef(0)
 
   const stop = useCallback(() => {
-    setSpraying(false)
+    setSpraying((was) => {
+      if (was) onSprayEnd()
+      return false
+    })
     if (frame.current !== null) cancelAnimationFrame(frame.current)
     frame.current = null
-  }, [])
+  }, [onSprayEnd])
 
   useEffect(() => {
     if (!spraying) return

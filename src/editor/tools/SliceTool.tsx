@@ -14,6 +14,8 @@ const MIN_SWIPE = 36
 const CUT_MS = 520
 /** How far apart they end up, in scene units. */
 const CUT_SPREAD = 130
+/** A beat after the halves settle, so the split is seen before the tool goes. */
+const SETTLE_MS = 260
 
 interface Result {
   cut: Cut
@@ -30,12 +32,15 @@ interface Result {
  */
 export function SliceTool({
   piece,
-  onCommit,
-  onCancel,
+  canSlice,
+  onCut,
+  onClose,
 }: {
   piece: Placed
-  onCommit(cut: Cut, separation: Point): void
-  onCancel(): void
+  /** False when the picture is full, or this piece has been cut all it can be. */
+  canSlice: boolean
+  onCut(cut: Cut, separation: Point): void
+  onClose(): void
 }) {
   const [drag, setDrag] = useState<{ from: Point; to: Point } | null>(null)
   const [result, setResult] = useState<Result | null>(null)
@@ -45,29 +50,46 @@ export function SliceTool({
 
   const start = useRef<Point | null>(null)
   const frame = useRef<number | null>(null)
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(
     () => () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current)
+      if (settle.current !== null) clearTimeout(settle.current)
     },
     [],
   )
 
-  const play = useCallback(() => {
-    if (frame.current !== null) cancelAnimationFrame(frame.current)
-    const began = performance.now()
+  /**
+   * Runs the split, then applies it and leaves. There is nothing to confirm —
+   * the cut you drew is the cut you get, and undo is a tap away on the canvas.
+   */
+  const play = useCallback(
+    (cut: Cut, normal: Point) => {
+      if (frame.current !== null) cancelAnimationFrame(frame.current)
+      const began = performance.now()
 
-    const step = (now: number): void => {
-      const t = Math.min(1, (now - began) / CUT_MS)
-      // Fast out, easing to a stop — a cut snaps apart, it doesn't drift.
-      setProgress(1 - (1 - t) ** 3)
-      if (t < 1) frame.current = requestAnimationFrame(step)
-      else frame.current = null
-    }
-    frame.current = requestAnimationFrame(step)
-  }, [])
+      const step = (now: number): void => {
+        const t = Math.min(1, (now - began) / CUT_MS)
+        // Fast out, easing to a stop — a cut snaps apart, it doesn't drift.
+        setProgress(1 - (1 - t) ** 3)
+        if (t < 1) frame.current = requestAnimationFrame(step)
+        else frame.current = null
+      }
+      frame.current = requestAnimationFrame(step)
+
+      // The cut is committed on a timer rather than at the end of the
+      // animation: frames stop entirely while a tab is hidden, and a player
+      // who glanced at a notification mid-swipe would come back to a tool that
+      // never finished and a cut that never happened.
+      settle.current = setTimeout(() => onCut(cut, normal), CUT_MS + SETTLE_MS)
+    },
+    [onCut],
+  )
 
   const attempt = (from: Point, to: Point): void => {
+    // Already cutting, or nothing left to cut with.
+    if (result || !canSlice) return
     if (Math.hypot(to.x - from.x, to.y - from.y) < MIN_SWIPE) return
 
     const centre = { x: STAGE / 2, y: STAGE / 2 }
@@ -101,10 +123,11 @@ export function SliceTool({
     const dy = to.y - from.y
     const length = Math.hypot(dx, dy)
 
+    const normal = { x: -dy / length, y: dx / length }
     setMissed(false)
     setProgress(0)
-    setResult({ cut, normal: { x: -dy / length, y: dx / length }, line: { from, to } })
-    play()
+    setResult({ cut, normal, line: { from, to } })
+    play(cut, normal)
   }
 
   const halves = result ? previewHalves(piece, result, progress) : [centred(piece)]
@@ -113,15 +136,15 @@ export function SliceTool({
     <ToolShell
       title="Slice"
       hint={
-        result
-          ? 'Two pieces. Swipe again to re-cut, or keep them.'
-          : missed
-            ? 'Missed — swipe straight through it.'
-            : 'Swipe across the art to cut it in two.'
+        !canSlice
+          ? 'No room to split this one — bin a piece first.'
+          : result
+            ? 'Split!'
+            : missed
+              ? 'Missed — swipe straight through it.'
+              : 'Swipe across the art to cut it in two.'
       }
-      onCancel={onCancel}
-      onDone={() => (result ? onCommit(result.cut, result.normal) : onCancel())}
-      doneLabel={result ? 'Keep both' : 'Done'}
+      onClose={onClose}
     >
       <div className="slice">
         <div

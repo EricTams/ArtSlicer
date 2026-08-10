@@ -2,7 +2,6 @@ import { useRef, useState } from 'react'
 
 import type { Placed, Squash } from '../../shared/scene'
 import { capturePointer } from '../pointer'
-import { mergeSquash } from '../sceneEdit'
 import { crushAngle, squeezeFactor } from '../squish'
 import { PiecePreview, ToolShell } from './ToolShell'
 
@@ -35,20 +34,19 @@ interface Swing {
  */
 export function SquishTool({
   piece,
-  onCommit,
-  onCancel,
+  onSqueeze,
+  onClose,
 }: {
   piece: Placed
-  onCommit(squashes: Squash[]): void
-  onCancel(): void
+  /** Applied straight away — each squeeze is its own undo step. */
+  onSqueeze(squash: Squash): void
+  onClose(): void
 }) {
-  /** Squeezes so far in this visit, previewed live and committed together. */
-  const [pending, setPending] = useState<Squash[]>([])
   /** Where the jaws currently sit. Null means resting. */
   const [jaws, setJaws] = useState<{ angle: number; radius: number } | null>(null)
 
   const swing = useRef<Swing | null>(null)
-  const total = pending.reduce((most, squash) => Math.max(most, squash.factor), 1)
+  const total = (piece.squashes ?? []).reduce((most, squash) => Math.max(most, squash.factor), 1)
 
   const pointOf = (event: React.PointerEvent<HTMLDivElement>): { x: number; y: number } => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -59,13 +57,11 @@ export function SquishTool({
     <ToolShell
       title="Squish"
       hint={
-        pending.length > 0
+        total > 1
           ? `Crushed ${total.toFixed(1)}×. Swing again to flatten it more.`
           : 'Swipe through the art from any side. The jaws close the way you swing.'
       }
-      onCancel={onCancel}
-      onDone={() => (pending.length > 0 ? onCommit(pending) : onCancel())}
-      doneLabel={pending.length > 0 ? 'Keep it' : 'Done'}
+      onClose={onClose}
     >
       <div className="squish">
         <div
@@ -120,13 +116,7 @@ export function SquishTool({
             if (travel < 12) return
 
             const factor = squeezeFactor(travel / FULL_SWING, state.peakSpeed / SPEED_REFERENCE)
-            setPending((current) => {
-              const merged = mergeSquash(current, {
-                angle: crushAngle(state.angle, piece.rotation),
-                factor,
-              })
-              return merged ?? current
-            })
+            onSqueeze({ angle: crushAngle(state.angle, piece.rotation), factor })
           }}
           onPointerCancel={() => {
             swing.current = null
@@ -136,17 +126,11 @@ export function SquishTool({
           <div className="squish__art">
             {/* Drawn at the piece's own angle — the jaws move around it now,
                 rather than the art spinning to meet them. */}
-            <PiecePreview piece={piece} size={STAGE} extraSquashes={pending} />
+            <PiecePreview piece={piece} size={STAGE} />
           </div>
 
           <Jaws angle={jaws?.angle ?? -Math.PI / 2} radius={jaws?.radius ?? OPEN_RADIUS} />
         </div>
-
-        {pending.length > 0 && (
-          <button type="button" className="btn btn--ghost" onClick={() => setPending([])}>
-            Start over
-          </button>
-        )}
       </div>
     </ToolShell>
   )

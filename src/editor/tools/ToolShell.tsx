@@ -4,31 +4,32 @@ import { Layer, Stage } from 'react-konva'
 import { PieceNode } from '../../render/PieceView'
 import { DESIGN_SIZE, type Placed, type Squash } from '../../shared/scene'
 
-/** Full-screen chrome shared by every tool: a title, a way out, and a done. */
+/**
+ * Full-screen chrome shared by every tool: a title and a way back.
+ *
+ * There is deliberately no confirm step. Tools change the piece as you use
+ * them, exactly like the physical actions they imitate, and the canvas's undo
+ * covers a change of mind — asking "keep this?" after every squeeze or cut put
+ * a decision between the player and the next thing they wanted to do.
+ */
 export function ToolShell({
   title,
   hint,
-  onCancel,
-  onDone,
-  doneLabel = 'Done',
+  onClose,
   children,
 }: {
   title: string
   hint?: string
-  onCancel(): void
-  onDone(): void
-  doneLabel?: string
+  onClose(): void
   children: ReactNode
 }) {
   return (
     <div className="tool2">
       <header className="tool2__head">
-        <button type="button" className="tool2__back" onClick={onCancel} aria-label="Cancel">
-          ✕
-        </button>
+        <span className="tool2__spacer" aria-hidden="true" />
         <h2 className="tool2__title">{title}</h2>
-        <button type="button" className="tool2__done" onClick={onDone}>
-          {doneLabel}
+        <button type="button" className="tool2__done" onClick={onClose}>
+          Done
         </button>
       </header>
       {hint && <p className="tool2__hint">{hint}</p>}

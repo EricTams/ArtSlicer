@@ -5,7 +5,7 @@ import { pieceAt } from '../render/hitTest'
 import { HANDLE_DRAW_RADIUS, handlePosition } from './handle'
 import { SceneView } from '../render/SceneView'
 import type { Cut, Placed, Scene, Squash } from '../shared/scene'
-import { MAX_PIECES, emptyScene } from '../shared/scene'
+import { MAX_CUTS_PER_PIECE, MAX_PIECES, emptyScene } from '../shared/scene'
 import { PartsBin } from './PartsBin'
 import { EMPTY_JAR, type Jar } from './paint'
 import {
@@ -160,35 +160,27 @@ export function Editor({ initialScene, onChange }: Props) {
           piece={selected}
           jar={jar}
           onJarChange={setJar}
+          // Paint lands as it is sprayed; the whole hold becomes one undo step
+          // rather than one per animation frame.
           onSpray={(color, delta) => live(sprayPiece(sceneRef.current, selected.id, color, delta))}
-          onDone={() => {
-            // One undo step for the whole spray, not one per animation frame.
-            commit(sceneRef.current)
-            setScreen('canvas')
-          }}
-          onCancel={() => setScreen('canvas')}
+          onSprayEnd={() => commit(sceneRef.current)}
+          onClose={() => setScreen('canvas')}
         />
       )}
 
       {selected && screen === 'squish' && (
         <SquishTool
           piece={selected}
-          onCommit={(squashes: Squash[]) => {
-            // Applied one at a time so the same merging rule governs both the
-            // preview inside the tool and what lands on the piece.
-            let next = sceneRef.current
-            for (const squash of squashes) next = addSquash(next, selected.id, squash)
-            commit(next)
-            setScreen('canvas')
-          }}
-          onCancel={() => setScreen('canvas')}
+          onSqueeze={(squash: Squash) => commit(addSquash(sceneRef.current, selected.id, squash))}
+          onClose={() => setScreen('canvas')}
         />
       )}
 
       {selected && screen === 'slice' && (
         <SliceTool
           piece={selected}
-          onCommit={(cut: Cut, separation) => {
+          canSlice={!full && (selected.cuts?.length ?? 0) < MAX_CUTS_PER_PIECE}
+          onCut={(cut: Cut, separation) => {
             commit(
               splitPiece(
                 sceneRef.current,
@@ -200,7 +192,7 @@ export function Editor({ initialScene, onChange }: Props) {
             )
             setScreen('canvas')
           }}
-          onCancel={() => setScreen('canvas')}
+          onClose={() => setScreen('canvas')}
         />
       )}
     </>
