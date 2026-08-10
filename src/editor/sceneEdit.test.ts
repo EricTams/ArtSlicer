@@ -18,12 +18,14 @@ import {
   addPiece,
   addSquash,
   bringToFront,
+  canRestack,
   canUndo,
   clearSquashes,
   clearTint,
   flipPiece,
   pushHistory,
   removePiece,
+  restackPiece,
   sendToBack,
   splitPiece,
   sprayPiece,
@@ -48,28 +50,28 @@ function spriteOrigin(piece: Placed): { x: number; y: number } {
 }
 
 function withPiece(id = 'a'): Scene {
-  return addPiece(emptyScene(), 'disc', id)
+  return addPiece(emptyScene(), 'pom-pom', id)
 }
 
 describe('addPiece', () => {
   it('stacks each new piece above the last', () => {
     let scene = withPiece('a')
-    scene = addPiece(scene, 'star', 'b')
+    scene = addPiece(scene, 'toaster', 'b')
     expect(scene.pieces[1]!.z).toBeGreaterThan(scene.pieces[0]!.z)
   })
 
   it('refuses to exceed the piece cap', () => {
     let scene = emptyScene()
-    for (let i = 0; i < MAX_PIECES; i++) scene = addPiece(scene, 'disc', `p${i}`)
+    for (let i = 0; i < MAX_PIECES; i++) scene = addPiece(scene, 'pom-pom', `p${i}`)
 
-    const full = addPiece(scene, 'disc', 'overflow')
+    const full = addPiece(scene, 'pom-pom', 'overflow')
     expect(full).toBe(scene)
   })
 })
 
 describe('layering', () => {
   it('brings a buried piece to the front', () => {
-    let scene = addPiece(withPiece('a'), 'star', 'b')
+    let scene = addPiece(withPiece('a'), 'toaster', 'b')
     scene = bringToFront(scene, 'a')
     expect(scene.pieces.find((p) => p.id === 'a')!.z).toBeGreaterThan(
       scene.pieces.find((p) => p.id === 'b')!.z,
@@ -77,11 +79,57 @@ describe('layering', () => {
   })
 
   it('sends a piece behind everything', () => {
-    let scene = addPiece(withPiece('a'), 'star', 'b')
+    let scene = addPiece(withPiece('a'), 'toaster', 'b')
     scene = sendToBack(scene, 'b')
     expect(scene.pieces.find((p) => p.id === 'b')!.z).toBeLessThan(
       scene.pieces.find((p) => p.id === 'a')!.z,
     )
+  })
+})
+
+describe('restackPiece', () => {
+  /** Three pieces, back to front: a, b, c. */
+  function stacked(): Scene {
+    return addPiece(addPiece(withPiece('a'), 'toaster', 'b'), 'candy-cane', 'c')
+  }
+
+  function order(scene: Scene): string[] {
+    return [...scene.pieces].sort((x, y) => x.z - y.z).map((piece) => piece.id)
+  }
+
+  it('moves a piece one step towards the front', () => {
+    expect(order(restackPiece(stacked(), 'a', 1))).toEqual(['b', 'a', 'c'])
+  })
+
+  it('moves a piece one step towards the back', () => {
+    expect(order(restackPiece(stacked(), 'c', -1))).toEqual(['a', 'c', 'b'])
+  })
+
+  it('leaves the piece at the end of the stack where it is', () => {
+    const scene = stacked()
+    expect(order(restackPiece(scene, 'c', 1))).toEqual(['a', 'b', 'c'])
+    expect(order(restackPiece(scene, 'a', -1))).toEqual(['a', 'b', 'c'])
+  })
+
+  // Equal z values are reachable through a clamped submission, and swapping
+  // them would be a no-op that reads to the player as a dead button.
+  it('still moves a piece whose neighbour shares its z', () => {
+    const scene = stacked()
+    const tied: Scene = { ...scene, pieces: scene.pieces.map((piece) => ({ ...piece, z: 3 })) }
+    expect(order(restackPiece(tied, 'a', 1))[1]).toBe('a')
+  })
+
+  it('knows when there is nowhere left to go', () => {
+    const scene = stacked()
+    expect(canRestack(scene, 'c', 1)).toBe(false)
+    expect(canRestack(scene, 'c', -1)).toBe(true)
+    expect(canRestack(scene, 'a', -1)).toBe(false)
+    expect(canRestack(scene, 'a', 1)).toBe(true)
+  })
+
+  it('has nowhere to go with a single piece', () => {
+    expect(canRestack(withPiece(), 'a', 1)).toBe(false)
+    expect(canRestack(withPiece(), 'a', -1)).toBe(false)
   })
 })
 
@@ -227,7 +275,7 @@ describe('slicing splits a piece in two', () => {
   it('moves each half’s centre onto the part that survived', () => {
     const scene = splitPiece(withPiece(), 'a', CUT, 'b')
 
-    // The disc is 256 wide, so each half balances a quarter-width off centre.
+    // The pom-pom is 256 wide, so each half balances a quarter-width off centre.
     expect(scene.pieces[0]!.pivot!.x).toBeCloseTo(-256 / 4, 0)
     expect(scene.pieces[1]!.pivot!.x).toBeCloseTo(256 / 4, 0)
   })
@@ -266,7 +314,7 @@ describe('slicing splits a piece in two', () => {
 
   it('refuses when there is no room for the second half', () => {
     let scene = emptyScene()
-    for (let i = 0; i < MAX_PIECES; i++) scene = addPiece(scene, 'disc', `p${i}`)
+    for (let i = 0; i < MAX_PIECES; i++) scene = addPiece(scene, 'pom-pom', `p${i}`)
     expect(splitPiece(scene, 'p0', CUT, 'extra')).toBe(scene)
   })
 
@@ -303,7 +351,7 @@ describe('history', () => {
     let history: History = { past: [], present: first }
     expect(canUndo(history)).toBe(false)
 
-    history = pushHistory(history, addPiece(first, 'star', 'b'))
+    history = pushHistory(history, addPiece(first, 'toaster', 'b'))
     expect(history.present.pieces).toHaveLength(2)
 
     history = undo(history)

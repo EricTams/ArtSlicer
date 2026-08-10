@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import { DESIGN_SIZE, type Placed } from '../shared/scene'
+import { isOverCanvas, toScene as toSceneCoords } from './canvasCoords'
 import { isOnHandle } from './handle'
 
 interface Gesture {
@@ -8,6 +9,12 @@ interface Gesture {
   onTransform(id: string, scale: number, rotation: number): void
   onTap(id: string): void
   onTapEmpty(): void
+  /**
+   * Dragged off the picture and let go. `origin` is where the piece sat when
+   * the drag began, so the caller can put it back before binning it and leave
+   * undo something sensible to restore.
+   */
+  onDragOut(id: string, origin: { x: number; y: number }): void
 }
 
 interface Anchor {
@@ -55,19 +62,8 @@ export function useCanvasGestures(
     /** Set while two pointers are down; cleared when either lifts. */
     let pinch: { distance: number; angle: number } | null = null
 
-    /**
-     * Measured against the drawing surface, not its container. The stage is a
-     * square centred in whatever space is available, so on a wide screen the
-     * container starts hundreds of pixels to its left — using the container's
-     * edge puts every pointer position far from where it actually landed, and
-     * only on a phone, where the two nearly coincide, does it look correct.
-     */
-    const toScene = (clientX: number, clientY: number): { x: number; y: number } => {
-      const surface = element.querySelector('canvas')
-      const rect = (surface ?? element).getBoundingClientRect()
-      const scale = DESIGN_SIZE / latest.current.size
-      return { x: (clientX - rect.left) * scale, y: (clientY - rect.top) * scale }
-    }
+    const toScene = (clientX: number, clientY: number): { x: number; y: number } =>
+      toSceneCoords(element, latest.current.size, clientX, clientY)
 
     /** Re-reads the piece, so each leg starts from where it actually is now. */
     const anchorTo = (piece: Placed, clientX: number, clientY: number): void => {
@@ -202,6 +198,16 @@ export function useCanvasGestures(
       if (!moved) {
         if (target && mode === 'move') latest.current.handlers.onTap(target.id)
         else if (!target) latest.current.handlers.onTapEmpty()
+      } else if (
+        target &&
+        anchor &&
+        mode === 'move' &&
+        !isOverCanvas(element, event.clientX, event.clientY)
+      ) {
+        // Dragged clean off the picture: that's how you throw a piece away.
+        // Only a plain move counts — sizing a piece near the edge with the
+        // handle drags the pointer outside all the time.
+        latest.current.handlers.onDragOut(target.id, { x: anchor.x, y: anchor.y })
       }
       target = null
       anchor = null

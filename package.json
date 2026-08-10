@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "pieces": "node scripts/build-manifest.mjs",
-    "pieces:placeholder": "node scripts/make-placeholder-pieces.mjs && npm run pieces"
+    "pieces:placeholder": "node scripts/make-placeholder-pieces.mjs && npm run pieces",
+    "pieces:generate": "node scripts/generate-pieces.mjs",
+    "pieces:review": "node scripts/review-sheet.mjs"
   },
   "dependencies": {
     "konva": "^10.3.0",

@@ -4,7 +4,7 @@ import type { Placed } from '../shared/scene'
 import { IDENTITY, apply, invert, multiply, pieceMatrix, rotation, scaling } from './transform'
 
 function piece(overrides: Partial<Placed> = {}): Placed {
-  return { id: 'a', pieceId: 'disc', x: 0, y: 0, scale: 1, rotation: 0, z: 1, ...overrides }
+  return { id: 'a', pieceId: 'pom-pom', x: 0, y: 0, scale: 1, rotation: 0, z: 1, ...overrides }
 }
 
 describe('matrix basics', () => {

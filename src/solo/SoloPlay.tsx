@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
 import { Editor } from '../editor/Editor'
 import { usePiecesLoaded } from '../editor/usePiecesLoaded'
@@ -14,7 +13,6 @@ export function SoloPlay() {
   const loaded = usePiecesLoaded()
   const [pool, setPool] = useState<string[]>(() => shufflePrompts())
   const [round, setRound] = useState(0)
-  const navigate = useNavigate()
 
   const prompt = pool[round % pool.length] ?? ''
 
@@ -40,25 +38,12 @@ export function SoloPlay() {
 
   return (
     <div className="build">
-      <header className="build__head">
-        <div>
-          <p className="build__round">Make something like</p>
-          <h2 className="build__prompt">{prompt}</h2>
-        </div>
-        <button
-          type="button"
-          className="linkbtn"
-          onClick={() => navigate('/')}
-          aria-label="Leave solo play"
-        >
-          Quit
-        </button>
-      </header>
-
+      {/* No header at all: the prompt is inside the picture, so the screen is
+          the picture and its controls. */}
       <div className="build__editor">
         {/* Keyed on the round so a new prompt clears the picture and hands you
             a fresh set of parts, rather than editing the last one. */}
-        <Editor key={round} />
+        <Editor key={round} prompt={prompt} />
       </div>
 
       <button className="btn btn--wide" onClick={nextPrompt}>

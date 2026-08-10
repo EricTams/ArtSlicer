@@ -1,86 +1,282 @@
 [
   {
-    "id": "diamond",
-    "category": "angular",
-    "src": "pieces/angular/diamond.png",
-    "width": 256,
+    "id": "argyle-sock",
+    "category": "props",
+    "src": "pieces/props/argyle-sock.png",
+    "width": 97,
     "height": 256
   },
   {
-    "id": "hexagon",
-    "category": "angular",
-    "src": "pieces/angular/hexagon.png",
-    "width": 256,
+    "id": "barber-pole",
+    "category": "props",
+    "src": "pieces/props/barber-pole.png",
+    "width": 66,
     "height": 256
   },
   {
-    "id": "star",
-    "category": "angular",
-    "src": "pieces/angular/star.png",
-    "width": 256,
+    "id": "bauble",
+    "category": "props",
+    "src": "pieces/props/bauble.png",
+    "width": 202,
     "height": 256
   },
   {
-    "id": "triangle",
-    "category": "angular",
-    "src": "pieces/angular/triangle.png",
-    "width": 256,
+    "id": "beach-ball",
+    "category": "props",
+    "src": "pieces/props/beach-ball.png",
+    "width": 255,
     "height": 256
   },
   {
-    "id": "bar",
-    "category": "block",
-    "src": "pieces/block/bar.png",
-    "width": 256,
+    "id": "bowling-pin",
+    "category": "props",
+    "src": "pieces/props/bowling-pin.png",
+    "width": 81,
     "height": 256
   },
   {
-    "id": "plank",
-    "category": "block",
-    "src": "pieces/block/plank.png",
+    "id": "bunting",
+    "category": "props",
+    "src": "pieces/props/bunting.png",
     "width": 256,
+    "height": 53
+  },
+  {
+    "id": "cactus-pot",
+    "category": "props",
+    "src": "pieces/props/cactus-pot.png",
+    "width": 120,
     "height": 256
   },
   {
-    "id": "gear",
-    "category": "mech",
-    "src": "pieces/mech/gear.png",
-    "width": 256,
+    "id": "candy-cane",
+    "category": "props",
+    "src": "pieces/props/candy-cane.png",
+    "width": 83,
     "height": 256
   },
   {
-    "id": "blob",
-    "category": "organic",
-    "src": "pieces/organic/blob.png",
-    "width": 256,
+    "id": "corn-dog",
+    "category": "props",
+    "src": "pieces/props/corn-dog.png",
+    "width": 64,
     "height": 256
   },
   {
-    "id": "capsule",
-    "category": "round",
-    "src": "pieces/round/capsule.png",
-    "width": 256,
+    "id": "dartboard",
+    "category": "props",
+    "src": "pieces/props/dartboard.png",
+    "width": 255,
     "height": 256
   },
   {
-    "id": "crescent",
-    "category": "round",
-    "src": "pieces/round/crescent.png",
-    "width": 256,
+    "id": "deck-chair",
+    "category": "props",
+    "src": "pieces/props/deck-chair.png",
+    "width": 140,
     "height": 256
   },
   {
-    "id": "disc",
-    "category": "round",
-    "src": "pieces/round/disc.png",
-    "width": 256,
+    "id": "disco-ball",
+    "category": "props",
+    "src": "pieces/props/disco-ball.png",
+    "width": 218,
     "height": 256
   },
   {
-    "id": "ring",
-    "category": "round",
-    "src": "pieces/round/ring.png",
+    "id": "enamel-mug",
+    "category": "props",
+    "src": "pieces/props/enamel-mug.png",
     "width": 256,
+    "height": 197
+  },
+  {
+    "id": "feather-duster",
+    "category": "props",
+    "src": "pieces/props/feather-duster.png",
+    "width": 145,
+    "height": 256
+  },
+  {
+    "id": "fire-hydrant",
+    "category": "props",
+    "src": "pieces/props/fire-hydrant.png",
+    "width": 136,
+    "height": 256
+  },
+  {
+    "id": "garden-gnome",
+    "category": "props",
+    "src": "pieces/props/garden-gnome.png",
+    "width": 107,
+    "height": 256
+  },
+  {
+    "id": "globe",
+    "category": "props",
+    "src": "pieces/props/globe.png",
+    "width": 179,
+    "height": 256
+  },
+  {
+    "id": "golf-ball",
+    "category": "props",
+    "src": "pieces/props/golf-ball.png",
+    "width": 135,
+    "height": 256
+  },
+  {
+    "id": "jester-hat",
+    "category": "props",
+    "src": "pieces/props/jester-hat.png",
+    "width": 256,
+    "height": 173
+  },
+  {
+    "id": "kite",
+    "category": "props",
+    "src": "pieces/props/kite.png",
+    "width": 114,
+    "height": 256
+  },
+  {
+    "id": "lawn-flamingo",
+    "category": "props",
+    "src": "pieces/props/lawn-flamingo.png",
+    "width": 170,
+    "height": 256
+  },
+  {
+    "id": "leg-lamp",
+    "category": "props",
+    "src": "pieces/props/leg-lamp.png",
+    "width": 122,
+    "height": 256
+  },
+  {
+    "id": "picnic-basket",
+    "category": "props",
+    "src": "pieces/props/picnic-basket.png",
+    "width": 230,
+    "height": 256
+  },
+  {
+    "id": "pincushion",
+    "category": "props",
+    "src": "pieces/props/pincushion.png",
+    "width": 256,
+    "height": 222
+  },
+  {
+    "id": "pineapple",
+    "category": "props",
+    "src": "pieces/props/pineapple.png",
+    "width": 120,
+    "height": 256
+  },
+  {
+    "id": "pinwheel",
+    "category": "props",
+    "src": "pieces/props/pinwheel.png",
+    "width": 166,
+    "height": 256
+  },
+  {
+    "id": "plunger",
+    "category": "props",
+    "src": "pieces/props/plunger.png",
+    "width": 83,
+    "height": 256
+  },
+  {
+    "id": "pom-pom",
+    "category": "props",
+    "src": "pieces/props/pom-pom.png",
+    "width": 256,
+    "height": 251
+  },
+  {
+    "id": "popsicle",
+    "category": "props",
+    "src": "pieces/props/popsicle.png",
+    "width": 110,
+    "height": 256
+  },
+  {
+    "id": "rubber-chicken",
+    "category": "props",
+    "src": "pieces/props/rubber-chicken.png",
+    "width": 95,
+    "height": 256
+  },
+  {
+    "id": "rubber-duck",
+    "category": "props",
+    "src": "pieces/props/rubber-duck.png",
+    "width": 236,
+    "height": 256
+  },
+  {
+    "id": "tin-can",
+    "category": "props",
+    "src": "pieces/props/tin-can.png",
+    "width": 176,
+    "height": 256
+  },
+  {
+    "id": "toadstool",
+    "category": "props",
+    "src": "pieces/props/toadstool.png",
+    "width": 177,
+    "height": 256
+  },
+  {
+    "id": "toaster",
+    "category": "props",
+    "src": "pieces/props/toaster.png",
+    "width": 256,
+    "height": 250
+  },
+  {
+    "id": "traffic-cone",
+    "category": "props",
+    "src": "pieces/props/traffic-cone.png",
+    "width": 134,
+    "height": 256
+  },
+  {
+    "id": "trumpet",
+    "category": "props",
+    "src": "pieces/props/trumpet.png",
+    "width": 76,
+    "height": 256
+  },
+  {
+    "id": "umbrella",
+    "category": "props",
+    "src": "pieces/props/umbrella.png",
+    "width": 256,
+    "height": 215
+  },
+  {
+    "id": "watermelon",
+    "category": "props",
+    "src": "pieces/props/watermelon.png",
+    "width": 223,
+    "height": 256
+  },
+  {
+    "id": "whoopee-cushion",
+    "category": "props",
+    "src": "pieces/props/whoopee-cushion.png",
+    "width": 256,
+    "height": 194
+  },
+  {
+    "id": "windsock",
+    "category": "props",
+    "src": "pieces/props/windsock.png",
+    "width": 185,
     "height": 256
   }
 ]

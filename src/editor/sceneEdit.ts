@@ -76,6 +76,49 @@ export function sendToBack(scene: Scene, id: string): Scene {
   return updatePiece(scene, id, { z: lowest - 1 })
 }
 
+/** Draw order, back to front — the order SceneView paints in. */
+function stacking(scene: Scene): Placed[] {
+  return [...scene.pieces].sort((a, b) => a.z - b.z)
+}
+
+/**
+ * Whether a piece has anywhere to go: false at the top of the stack going up,
+ * at the bottom going down, and for a picture holding a single piece.
+ */
+export function canRestack(scene: Scene, id: string, direction: 1 | -1): boolean {
+  const index = stacking(scene).findIndex((piece) => piece.id === id)
+  if (index === -1) return false
+  const target = index + direction
+  return target >= 0 && target < scene.pieces.length
+}
+
+/**
+ * Moves a piece one step through the draw order, `1` towards the front.
+ *
+ * Swapping the two z values would be enough if they were always distinct, but
+ * nothing guarantees that — a clamped submission or two pieces built the same
+ * way can collide, and swapping equal values silently does nothing. Renumbering
+ * the whole stack by its sorted position keeps every step effective.
+ */
+export function restackPiece(scene: Scene, id: string, direction: 1 | -1): Scene {
+  const order = stacking(scene)
+  const index = order.findIndex((piece) => piece.id === id)
+  if (index === -1) return scene
+
+  const target = index + direction
+  if (target < 0 || target >= order.length) return scene
+
+  const moved = order[index]!
+  order[index] = order[target]!
+  order[target] = moved
+
+  const depth = new Map(order.map((piece, position) => [piece.id, position]))
+  return {
+    ...scene,
+    pieces: scene.pieces.map((piece) => ({ ...piece, z: depth.get(piece.id) ?? piece.z })),
+  }
+}
+
 export function flipPiece(scene: Scene, id: string): Scene {
   const piece = find(scene, id)
   if (!piece) return scene

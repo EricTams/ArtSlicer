@@ -41,17 +41,14 @@ export function BuildScreen({
   return (
     <div className="build">
       <header className="build__head">
-        <div>
-          <p className="build__round">
-            Round {roundIndex + 1} of {totalRounds}
-          </p>
-          <h2 className="build__prompt">{prompt}</h2>
-        </div>
+        <p className="build__round">
+          Round {roundIndex + 1} of {totalRounds}
+        </p>
         <Countdown deadline={deadline} clockOffset={clockOffset} />
       </header>
 
       <div className="build__editor">
-        <Editor onChange={handleChange} />
+        <Editor prompt={prompt} onChange={handleChange} />
       </div>
 
       <button className="btn btn--wide" onClick={handleSubmit}>

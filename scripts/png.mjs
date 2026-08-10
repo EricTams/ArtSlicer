@@ -1,8 +1,9 @@
-import { deflateSync } from 'node:zlib'
+import { deflateSync, inflateSync } from 'node:zlib'
 
 /**
- * Minimal PNG writer (8-bit RGBA, non-interlaced). Enough to generate
- * placeholder art from a script without pulling in an image dependency.
+ * Minimal PNG reader/writer (8-bit RGB or RGBA, non-interlaced). Enough to
+ * generate placeholder art and post-process generated art from a script
+ * without pulling in an image dependency.
  */
 
 const CRC_TABLE = (() => {
@@ -63,4 +64,77 @@ export function encodePng(width, height, rgba) {
 /** Reads width/height straight out of IHDR. */
 export function readPngSize(buffer) {
   return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) }
+}
+
+function paethPredictor(a, b, c) {
+  const p = a + b - c
+  const pa = Math.abs(p - a)
+  const pb = Math.abs(p - b)
+  const pc = Math.abs(p - c)
+  if (pa <= pb && pa <= pc) return a
+  return pb <= pc ? b : c
+}
+
+/**
+ * Decodes an 8-bit RGB/RGBA non-interlaced PNG to `{ width, height, rgba }`.
+ * That covers everything the image API returns; anything else throws rather
+ * than silently producing garbage pixels.
+ */
+export function decodePng(buffer) {
+  const width = buffer.readUInt32BE(16)
+  const height = buffer.readUInt32BE(20)
+  const bitDepth = buffer[24]
+  const colourType = buffer[25]
+  const interlace = buffer[28]
+
+  if (bitDepth !== 8 || interlace !== 0 || (colourType !== 2 && colourType !== 6)) {
+    throw new Error(`Unsupported PNG: depth ${bitDepth}, colour type ${colourType}, interlace ${interlace}`)
+  }
+
+  const channels = colourType === 6 ? 4 : 3
+  const idat = []
+  let offset = 8
+  while (offset < buffer.length) {
+    const length = buffer.readUInt32BE(offset)
+    const type = buffer.toString('ascii', offset + 4, offset + 8)
+    if (type === 'IDAT') idat.push(buffer.subarray(offset + 8, offset + 8 + length))
+    if (type === 'IEND') break
+    offset += length + 12
+  }
+
+  const raw = inflateSync(Buffer.concat(idat))
+  const stride = width * channels
+  const out = new Uint8ClampedArray(width * height * 4)
+  let previous = Buffer.alloc(stride)
+
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)]
+    const line = Buffer.from(raw.subarray(y * (stride + 1) + 1, y * (stride + 1) + 1 + stride))
+
+    // Undo the per-scanline filter in place; each byte may reference the pixel
+    // to its left (a), the byte above (b) and the one above-left (c).
+    for (let x = 0; x < stride; x++) {
+      const a = x >= channels ? line[x - channels] : 0
+      const b = previous[x]
+      const c = x >= channels ? previous[x - channels] : 0
+      if (filter === 1) line[x] = (line[x] + a) & 0xff
+      else if (filter === 2) line[x] = (line[x] + b) & 0xff
+      else if (filter === 3) line[x] = (line[x] + ((a + b) >> 1)) & 0xff
+      else if (filter === 4) line[x] = (line[x] + paethPredictor(a, b, c)) & 0xff
+      else if (filter !== 0) throw new Error(`Unknown PNG filter ${filter} on row ${y}`)
+    }
+
+    for (let x = 0; x < width; x++) {
+      const to = (y * width + x) * 4
+      const from = x * channels
+      out[to] = line[from]
+      out[to + 1] = line[from + 1]
+      out[to + 2] = line[from + 2]
+      out[to + 3] = channels === 4 ? line[from + 3] : 255
+    }
+
+    previous = line
+  }
+
+  return { width, height, rgba: out }
 }

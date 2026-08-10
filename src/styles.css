@@ -642,6 +642,25 @@ h3 {
   touch-action: none;
 }
 
+.make__stage {
+  position: relative;
+}
+
+/* Inset into the picture's own corner rather than sitting in a header, so the
+   prompt stays with the thing you are making. */
+.make__label {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #6a6f7a;
+  pointer-events: none;
+}
+
 .make__hint {
   margin: 0;
   text-align: center;
@@ -652,8 +671,58 @@ h3 {
 
 .make__tools {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
+}
+
+/* Shaped like a tool button, but holding two controls instead of being one. */
+.order {
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  border-radius: 14px;
+  padding: 6px 4px;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.order__arrows {
+  display: flex;
+  gap: 4px;
+}
+
+.order__arrow {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  width: 34px;
+  padding: 2px 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.order__arrow:active:not(:disabled) {
+  background: var(--accent);
+  color: #1a0512;
+}
+
+/* Already at the top or the bottom of the stack. */
+.order__arrow:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.order__label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-dim);
 }
 
 .bigtool {
@@ -673,9 +742,16 @@ h3 {
   min-height: 64px;
 }
 
-.bigtool:active {
+.bigtool:active:not(:disabled) {
   background: var(--accent);
   color: #1a0512;
+}
+
+/* Nothing selected. The row keeps its space so the canvas above it cannot
+   change size — only the buttons go quiet. */
+.bigtool:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .bigtool__glyph {
@@ -702,6 +778,108 @@ h3 {
 
 .make__bin {
   flex: 1;
+}
+
+/* ---------- parts tray (drawer over the bottom buttons) ---------- */
+
+/* Anchored over the layout, never part of it: taking a row would shrink the
+   canvas above, and the picture must hold its size while you are working.
+   Pinned to the viewport rather than the editor so it also covers whatever
+   sits below it — New prompt on the solo screen, Submit in a round. */
+.tray {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px max(10px, env(safe-area-inset-bottom));
+  background: var(--bg-raised);
+  border-top: 1px solid var(--line);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -12px 32px rgb(0 0 0 / 45%);
+}
+
+.tray__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tray__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.tray__close {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+/* Two rows, filled column by column, so a sideways scroll walks through the
+   pieces in order rather than jumping every other one. */
+.tray__strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, auto);
+  grid-auto-columns: max-content;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Only the strip scrolls; a drag that starts on a tile is ours, not the
+     browser's, so vertical panning must not steal it. */
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+}
+
+.tray__item {
+  appearance: none;
+  flex: none;
+  width: 76px;
+  height: 76px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  cursor: grab;
+  touch-action: none;
+}
+
+.tray__item:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tray__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* Rides above everything, and must never eat the pointer events the drag
+   itself depends on. */
+.tray__ghost {
+  position: fixed;
+  z-index: 60;
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.85;
+  filter: drop-shadow(0 6px 14px rgb(0 0 0 / 50%));
 }
 
 /* ---------- full-screen tools ---------- */
@@ -775,62 +953,38 @@ h3 {
   flex-direction: column;
 }
 
-/* ---------- parts bin ---------- */
+/* ---------- parts tray tabs ---------- */
 
-.bin__tabs {
+/* Only rendered when there is more than one pile; kept so adding a category
+   back does not arrive unstyled. */
+.tray__tabs {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding: 12px 12px 0;
   scrollbar-width: none;
 }
 
-.bin__tabs::-webkit-scrollbar {
+.tray__tabs::-webkit-scrollbar {
   display: none;
 }
 
-.bin__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 10px;
-  padding: 12px;
-  overflow-y: auto;
-}
-
-.bin__item {
+.tray__tab {
   appearance: none;
-  aspect-ratio: 1;
-  border-radius: 14px;
-  /* Sprites are near-white by design, so the tile is dark for contrast. */
-  background: var(--bg-sunken);
+  flex: none;
   border: 1px solid var(--line);
-  cursor: pointer;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
+  background: var(--bg);
   color: var(--text-dim);
+  border-radius: 999px;
+  padding: 4px 12px;
   font-family: inherit;
-  font-size: 0.65rem;
-  text-transform: capitalize;
+  font-size: 0.7rem;
+  cursor: pointer;
 }
 
-.bin__item:active:not(:disabled) {
+.tray__tab--on {
+  background: var(--accent);
   border-color: var(--accent);
-}
-
-.bin__item:disabled {
-  opacity: 0.3;
-}
-
-.bin__item img {
-  width: 100%;
-  min-height: 0;
-  flex: 1;
-  object-fit: contain;
-  pointer-events: none;
+  color: #1a0512;
 }
 
 /* ---------- colour tool ---------- */
