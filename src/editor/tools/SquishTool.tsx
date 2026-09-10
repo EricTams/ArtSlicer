@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 
-import type { Placed, Squash } from '../../shared/scene'
+import { MAX_SQUASH, type Placed, type Squash } from '../../shared/scene'
 import { capturePointer } from '../pointer'
 import { crushAngle, squeezeFactor } from '../squish'
 import { PiecePreview, ToolShell } from './ToolShell'
@@ -11,8 +11,15 @@ const CENTRE = STAGE / 2
 const CLOSED_RADIUS = 18
 /** Where the jaws rest before you touch anything. */
 const OPEN_RADIUS = STAGE * 0.46
-/** A press this close to the middle gives no swing direction to read. */
-const MIN_START_RADIUS = 30
+/**
+ * How far inside the rim still counts as taking hold of a jaw.
+ *
+ * Every crush has to start out here, so the only way to squeeze again is to let
+ * go, reach back out and swipe again — three crushes are three swipes, not one
+ * long drag with three wiggles in it.
+ */
+const GRAB_SLOP = 46
+const GRAB_RADIUS = OPEN_RADIUS - GRAB_SLOP
 /** Distance that counts as a full swing. */
 const FULL_SWING = STAGE * 0.34
 const SPEED_REFERENCE = 900 // px/sec that counts as a hard slam
@@ -20,17 +27,22 @@ const SPEED_REFERENCE = 900 // px/sec that counts as a hard slam
 interface Swing {
   /** Direction from the art's centre to where the finger went down. */
   angle: number
-  /** Distance from centre, along that axis. */
+  /** Where the jaw sits now: its distance from centre, along that axis. */
   radius: number
+  /**
+   * Gap between the finger and the jaw it took hold of. Held constant so the
+   * jaw follows the swipe one for one instead of snapping under the finger.
+   */
+  grabOffset: number
   time: number
   peakSpeed: number
   startRadius: number
 }
 
 /**
- * The crusher. The jaws come from wherever you put your finger and close along
- * the path you drag — so aiming and squeezing are one motion instead of a
- * slider plus a drag.
+ * The crusher. The jaws ride a track around the art: take hold of one at the
+ * rim, swipe it through, let go. Aiming and squeezing stay one motion, and the
+ * grab is what makes it swipe, swipe, swipe rather than one long push.
  */
 export function SquishTool({
   piece,
@@ -42,8 +54,12 @@ export function SquishTool({
   onSqueeze(squash: Squash): void
   onClose(): void
 }) {
-  /** Where the jaws currently sit. Null means resting. */
-  const [jaws, setJaws] = useState<{ angle: number; radius: number } | null>(null)
+  /** How far the jaws are closed, while one is held. Null means resting. */
+  const [held, setHeld] = useState<{ angle: number; radius: number } | null>(null)
+  /** The jaws stay where the last swipe left them, so the track reads as real. */
+  const [restAngle, setRestAngle] = useState(-Math.PI / 2)
+  /** Set by a press that landed short of the jaws, so the hint can say so. */
+  const [missed, setMissed] = useState(false)
 
   const swing = useRef<Swing | null>(null)
   const total = (piece.squashes ?? []).reduce((most, squash) => Math.max(most, squash.factor), 1)
@@ -57,9 +73,14 @@ export function SquishTool({
     <ToolShell
       title="Squish"
       hint={
-        total > 1
-          ? `Crushed ${total.toFixed(1)}×. Swing again to flatten it more.`
-          : 'Swipe through the art from any side. The jaws close the way you swing.'
+        missed
+          ? 'Start at the edge — take hold of a jaw, then swipe it through.'
+          : total >= MAX_SQUASH
+            ? // Saying so beats letting them swipe at an axis that cannot give.
+              `Crushed ${total.toFixed(1)}× — as flat as that way goes. Swipe another way to reshape it.`
+            : total > 1
+              ? `Crushed ${total.toFixed(1)}×. Grab a jaw and swipe again to flatten it more.`
+              : 'Grab a jaw at the edge and swipe it through the art.'
       }
       onClose={onClose}
     >
@@ -70,18 +91,27 @@ export function SquishTool({
           onPointerDown={(event) => {
             const p = pointOf(event)
             const radius = Math.hypot(p.x, p.y)
-            // Starting on top of the art gives no direction to swing from.
-            if (radius < MIN_START_RADIUS) return
+            // The jaws have to be taken hold of out at the rim. A press on the
+            // art itself is not a grab, so it does nothing at all.
+            if (radius < GRAB_RADIUS) {
+              setMissed(true)
+              return
+            }
 
             const angle = Math.atan2(p.y, p.x)
+            setMissed(false)
             swing.current = {
               angle,
-              radius,
-              startRadius: radius,
+              // The jaw is picked up where it rests, not where the finger
+              // landed, so reaching past the rim is not a head start.
+              radius: OPEN_RADIUS,
+              startRadius: OPEN_RADIUS,
+              grabOffset: radius - OPEN_RADIUS,
               time: performance.now(),
               peakSpeed: 0,
             }
-            setJaws({ angle, radius })
+            setRestAngle(angle)
+            setHeld({ angle, radius: OPEN_RADIUS })
             capturePointer(event)
           }}
           onPointerMove={(event) => {
@@ -92,7 +122,7 @@ export function SquishTool({
             // sideways neither closes the jaws nor counts as speed.
             const p = pointOf(event)
             const along = p.x * Math.cos(state.angle) + p.y * Math.sin(state.angle)
-            const radius = Math.max(CLOSED_RADIUS, along)
+            const radius = Math.min(OPEN_RADIUS, Math.max(CLOSED_RADIUS, along - state.grabOffset))
 
             const now = performance.now()
             const dt = Math.max(1, now - state.time)
@@ -103,12 +133,14 @@ export function SquishTool({
             state.radius = radius
             state.time = now
 
-            setJaws({ angle: state.angle, radius })
+            setHeld({ angle: state.angle, radius })
           }}
           onPointerUp={() => {
             const state = swing.current
             swing.current = null
-            setJaws(null)
+            // Letting go springs the jaws back open, so the next crush has to
+            // start with another grab.
+            setHeld(null)
             if (!state) return
 
             const travel = state.startRadius - state.radius
@@ -120,7 +152,7 @@ export function SquishTool({
           }}
           onPointerCancel={() => {
             swing.current = null
-            setJaws(null)
+            setHeld(null)
           }}
         >
           <div className="squish__art">
@@ -129,7 +161,17 @@ export function SquishTool({
             <PiecePreview piece={piece} size={STAGE} />
           </div>
 
-          <Jaws angle={jaws?.angle ?? -Math.PI / 2} radius={jaws?.radius ?? OPEN_RADIUS} />
+          {/* The track the jaws sit on, and the band a grab has to land in. */}
+          <div
+            className="squish__track"
+            style={{ width: OPEN_RADIUS * 2, height: OPEN_RADIUS * 2, borderWidth: GRAB_SLOP }}
+          />
+
+          <Jaws
+            angle={held?.angle ?? restAngle}
+            radius={held?.radius ?? OPEN_RADIUS}
+            held={held !== null}
+          />
         </div>
       </div>
     </ToolShell>
@@ -141,11 +183,14 @@ export function SquishTool({
  * vertical axis lines up with the swing, which puts one jaw under the finger
  * and the other directly opposite.
  */
-function Jaws({ angle, radius }: { angle: number; radius: number }) {
+function Jaws({ angle, radius, held }: { angle: number; radius: number; held: boolean }) {
   const degrees = (angle * 180) / Math.PI - 90
 
   return (
-    <div className="squish__jaws" style={{ transform: `rotate(${degrees}deg)` }}>
+    <div
+      className={`squish__jaws${held ? ' squish__jaws--held' : ''}`}
+      style={{ transform: `rotate(${degrees}deg)` }}
+    >
       <div className="jaw" style={{ transform: `translateY(${radius}px)` }}>
         <div className="jaw__teeth" />
       </div>

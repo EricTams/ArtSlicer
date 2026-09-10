@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { apply, multiply, rotation, squashMatrix } from '../render/transform'
+import { MAX_SQUASH } from '../shared/scene'
 import { crushAngle, squeezeFactor } from './squish'
 
 const FACTOR = 4
@@ -46,7 +47,7 @@ describe('crushAngle', () => {
     const pieceRotation = 0.7
     const swing = Math.PI / 3
     const across = lengthAfter(pieceRotation, swing, swing + Math.PI / 2)
-    expect(across).toBeCloseTo(100 * Math.sqrt(FACTOR), 1)
+    expect(across).toBeCloseTo(100 * FACTOR, 1)
   })
 
   it('matches the stored convention: a vertical swing on an upright piece is angle 0', () => {
@@ -60,18 +61,19 @@ describe('squeezeFactor', () => {
   })
 
   it('rewards a fast swing over a slow one', () => {
-    expect(squeezeFactor(1, 0)).toBeCloseTo(1.2)
-    expect(squeezeFactor(1, 1)).toBeCloseTo(1.7)
+    expect(squeezeFactor(1, 0)).toBeCloseTo(1.1)
+    expect(squeezeFactor(1, 1)).toBeCloseTo(1.35)
   })
 
   it('keeps one squeeze modest, so extremes take repeats', () => {
-    // Four hard swings compound past 8x; one alone barely registers.
-    expect(squeezeFactor(1, 1) ** 4).toBeGreaterThan(8)
-    expect(squeezeFactor(1, 1)).toBeLessThan(2)
+    // Five hard swings reach the cap; one alone barely registers.
+    expect(squeezeFactor(1, 1) ** 5).toBeGreaterThan(MAX_SQUASH)
+    expect(squeezeFactor(1, 1) ** 3).toBeLessThan(MAX_SQUASH)
+    expect(squeezeFactor(1, 1)).toBeLessThan(1.5)
   })
 
   it('clamps nonsense input rather than producing a negative crush', () => {
     expect(squeezeFactor(-5, 5)).toBe(1)
-    expect(squeezeFactor(5, 5)).toBeCloseTo(1.7)
+    expect(squeezeFactor(5, 5)).toBeCloseTo(1.35)
   })
 })

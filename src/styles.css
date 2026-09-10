@@ -669,14 +669,19 @@ h3 {
   min-height: 2.4em;
 }
 
+/* Wraps rather than squeezing: six controls across a phone would leave targets
+   too narrow to hit, and the row wraps to a fixed number of lines for a given
+   width, so the canvas above it still cannot resize mid-gesture. */
 .make__tools {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* 92px puts three across any phone — six controls in two full rows — and all
+     six on one row once there is room for them. */
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 8px;
 }
 
 /* Shaped like a tool button, but holding two controls instead of being one. */
-.order {
+.pairtool {
   border: 1px solid var(--line);
   background: var(--bg-raised);
   border-radius: 14px;
@@ -689,37 +694,41 @@ h3 {
   gap: 2px;
 }
 
-.order__arrows {
+.pairtool__buttons {
   display: flex;
   gap: 4px;
+  align-self: stretch;
+  padding: 0 4px;
 }
 
-.order__arrow {
+.pairtool__button {
   appearance: none;
   border: 1px solid var(--line);
   background: var(--bg);
   color: var(--text);
   border-radius: 8px;
-  width: 34px;
-  padding: 2px 0;
+  /* Share the tile evenly however narrow it gets. */
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
   font-family: inherit;
   font-size: 0.8rem;
   line-height: 1.2;
   cursor: pointer;
 }
 
-.order__arrow:active:not(:disabled) {
+.pairtool__button:active:not(:disabled) {
   background: var(--accent);
   color: #1a0512;
 }
 
-/* Already at the top or the bottom of the stack. */
-.order__arrow:disabled {
+/* Nothing selected, or already at the top or bottom of the stack. */
+.pairtool__button:disabled {
   opacity: 0.3;
   cursor: default;
 }
 
-.order__label {
+.pairtool__label {
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--text-dim);
@@ -1150,6 +1159,21 @@ h3 {
   inset: 0;
 }
 
+/* The band the jaws rest on: press anywhere in it to take hold of one. Drawn
+   as a thick inward border so its inner edge is exactly the grab radius. */
+.squish__track {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border-style: solid;
+  border-color: rgba(91, 85, 112, 0.07);
+  box-sizing: border-box;
+  z-index: 1;
+  pointer-events: none;
+}
+
 /* The jaws live in a wrapper that turns to face the swing, so they always
    close along the direction the finger travelled. */
 .squish__jaws {
@@ -1158,6 +1182,13 @@ h3 {
   z-index: 2;
   pointer-events: none;
   transform-origin: center;
+}
+
+/* Held jaws bite down harder than resting ones, so it is obvious the grab
+   landed and the swipe is live. */
+.squish__jaws--held .jaw {
+  background: linear-gradient(#4a4560, #2f2b40);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .jaw {
@@ -1170,6 +1201,12 @@ h3 {
   height: 26px;
   background: linear-gradient(var(--text-dim), #5b5570);
   border-radius: 3px;
+}
+
+/* Only the released jaws animate — a transition while dragging would put the
+   plates behind the finger. */
+.squish__jaws:not(.squish__jaws--held) .jaw {
+  transition: transform 160ms ease-out;
 }
 
 .jaw__teeth {

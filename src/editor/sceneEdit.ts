@@ -119,10 +119,38 @@ export function restackPiece(scene: Scene, id: string, direction: 1 | -1): Scene
   }
 }
 
-export function flipPiece(scene: Scene, id: string): Scene {
+/** `x` swaps left and right on the picture; `y` swaps top and bottom. */
+export type FlipAxis = 'x' | 'y'
+
+/**
+ * Mirrors a piece about an axis of the picture, not of the sprite.
+ *
+ * Which matters as soon as a piece is turned: pressing "left to right" on a
+ * flamingo lying on its side should still swap its left and right on screen,
+ * and mirroring in the piece's own frame would flip it top to bottom instead.
+ * The tools all aim at what the player can see, and this is no different.
+ *
+ * Every reflection is a mirror plus a turn, so both axes reuse the one `flipX`
+ * flag and carry the rotation with them — negated for left-right, negated about
+ * upright for top-bottom. A second `flipY` flag would be redundant state (both
+ * set is a half turn) that the renderer, the hit test and the slice tool would
+ * each have to learn about, for no shape they cannot already reach.
+ */
+export function flipPiece(scene: Scene, id: string, axis: FlipAxis): Scene {
   const piece = find(scene, id)
   if (!piece) return scene
-  return updatePiece(scene, id, { flipX: !piece.flipX })
+
+  const turned = axis === 'x' ? -piece.rotation : Math.PI - piece.rotation
+  return updatePiece(scene, id, { flipX: !piece.flipX, rotation: wrapAngle(turned) })
+}
+
+/** Keeps rotation in (-π, π] so repeated flips cannot wind it up. */
+function wrapAngle(radians: number): number {
+  const turn = Math.PI * 2
+  const wrapped = radians % turn
+  if (wrapped > Math.PI) return wrapped - turn
+  if (wrapped <= -Math.PI) return wrapped + turn
+  return wrapped
 }
 
 /**
@@ -171,7 +199,7 @@ export function mergeSquash(squashes: readonly Squash[], next: Squash): Squash[]
   const result = [...squashes]
   const last = result[result.length - 1]
 
-  if (last && Math.abs(angleBetween(last.angle, next.angle)) < SAME_AXIS_TOLERANCE) {
+  if (last && axisGap(last.angle, next.angle) < SAME_AXIS_TOLERANCE) {
     result[result.length - 1] = {
       angle: last.angle,
       // Crushes along one axis multiply: squeezing 1.5× twice is 2.25×.
@@ -183,6 +211,19 @@ export function mergeSquash(squashes: readonly Squash[], next: Squash): Squash[]
   if (result.length >= MAX_SQUASHES_PER_PIECE) return null
   result.push({ ...next, factor: Math.min(MAX_SQUASH, next.factor) })
   return result
+}
+
+/**
+ * How far apart two crushes are aimed, as axes rather than directions.
+ *
+ * A crush along θ and one along θ + π are the same squeeze approached from the
+ * other side — which is precisely what happens when the player grabs the jaw
+ * nearest their hand and swipes back the other way. Treating those as separate
+ * crushes would spend an axis slot on nothing and stall the readout.
+ */
+function axisGap(a: number, b: number): number {
+  const diff = Math.abs(angleBetween(a, b))
+  return Math.min(diff, Math.PI - diff)
 }
 
 /** Smallest signed angle between two directions, accounting for wraparound. */

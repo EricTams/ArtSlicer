@@ -96,8 +96,12 @@ export const MIN_SQUASH = 1
  * The cap on one axis' *accumulated* crush. A single squeeze does far less
  * than this — reaching the extreme takes repeated hits, which is the point of
  * the crusher.
+ *
+ * Crushing preserves area, so this is also how far the piece stretches the
+ * other way: at 4× it is a ribbon four times its own width, which is as far as
+ * a piece can go and still sit on the canvas.
  */
-export const MAX_SQUASH = 12
+export const MAX_SQUASH = 4
 
 export function emptyScene(): Scene {
   return { pieces: [] }

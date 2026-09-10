@@ -18,12 +18,12 @@ export function crushAngle(screenAngle: number, pieceRotation: number): number {
 }
 
 /**
- * One squeeze deliberately does little: a slow full swing is about 1.2×, a
- * hard one about 1.7×. Extreme shapes come from hitting it again and again,
+ * One squeeze deliberately does little: a slow full swing is about 1.1×, a
+ * hard one about 1.35×. Extreme shapes come from hitting it again and again,
  * which is what makes it a crusher rather than a slider.
  */
-export const GENTLE_SQUEEZE = 0.2
-export const SPEED_BONUS = 0.5
+export const GENTLE_SQUEEZE = 0.1
+export const SPEED_BONUS = 0.25
 
 export function squeezeFactor(closed: number, speedFraction: number): number {
   const swing = clamp01(closed)

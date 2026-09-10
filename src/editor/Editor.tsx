@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Circle, Line } from 'react-konva'
 
 import { pieceAt } from '../render/hitTest'
@@ -15,6 +15,7 @@ import {
   addSquash,
   canRestack,
   canUndo,
+  flipPiece,
   movePiece,
   pushHistory,
   removePiece,
@@ -181,31 +182,36 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
             disabled={!selected}
             onClick={() => setScreen('slice')}
           />
-          {/* Acts on the picture straight away rather than opening a tool: one
-              step through the draw order per press. */}
-          <div className="order" aria-label="Draw order">
-            <div className="order__arrows">
-              <button
-                type="button"
-                className="order__arrow"
-                aria-label="Bring forward"
-                disabled={!selected || !canRestack(scene, selected.id, 1)}
-                onClick={() => selected && commit(restackPiece(scene, selected.id, 1))}
-              >
-                ▲
-              </button>
-              <button
-                type="button"
-                className="order__arrow"
-                aria-label="Send back"
-                disabled={!selected || !canRestack(scene, selected.id, -1)}
-                onClick={() => selected && commit(restackPiece(scene, selected.id, -1))}
-              >
-                ▼
-              </button>
-            </div>
-            <span className="order__label">Order</span>
-          </div>
+          {/* Both pairs act on the picture straight away rather than opening a
+              tool: one press, one step. */}
+          <PairTool label="Order">
+            <PairButton
+              glyph="▲"
+              label="Bring forward"
+              disabled={!selected || !canRestack(scene, selected.id, 1)}
+              onClick={() => selected && commit(restackPiece(scene, selected.id, 1))}
+            />
+            <PairButton
+              glyph="▼"
+              label="Send back"
+              disabled={!selected || !canRestack(scene, selected.id, -1)}
+              onClick={() => selected && commit(restackPiece(scene, selected.id, -1))}
+            />
+          </PairTool>
+          <PairTool label="Flip">
+            <PairButton
+              glyph="⇄"
+              label="Flip left to right"
+              disabled={!selected}
+              onClick={() => selected && commit(flipPiece(scene, selected.id, 'x'))}
+            />
+            <PairButton
+              glyph="⇅"
+              label="Flip top to bottom"
+              disabled={!selected}
+              onClick={() => selected && commit(flipPiece(scene, selected.id, 'y'))}
+            />
+          </PairTool>
           <ToolButton
             glyph="🗑"
             label="Bin it"
@@ -335,6 +341,43 @@ function SelectionRing({ piece }: { piece: Placed }) {
         listening={false}
       />
     </>
+  )
+}
+
+/**
+ * Shaped like a tool button, but holding two controls instead of being one —
+ * for the pairs that are opposites of each other and need no tool screen.
+ */
+function PairTool({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="pairtool" aria-label={label}>
+      <div className="pairtool__buttons">{children}</div>
+      <span className="pairtool__label">{label}</span>
+    </div>
+  )
+}
+
+function PairButton({
+  glyph,
+  label,
+  disabled,
+  onClick,
+}: {
+  glyph: string
+  label: string
+  disabled: boolean
+  onClick(): void
+}) {
+  return (
+    <button
+      type="button"
+      className="pairtool__button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {glyph}
+    </button>
   )
 }
 

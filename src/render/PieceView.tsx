@@ -88,12 +88,11 @@ export function PieceNode({
 function Squashed({ squashes, children }: { squashes: Squash[]; children: ReactNode }): ReactNode {
   return squashes.reduce<ReactNode>((inner, squash, index) => {
     const degrees = (squash.angle * 180) / Math.PI
-    // Crushing along the axis stretches across it, so the piece keeps roughly
-    // its area rather than simply shrinking.
-    const across = Math.sqrt(squash.factor)
+    // Reciprocal scales: what the crush takes off one axis it gives back on
+    // the other, so the piece keeps its area and only changes shape.
     return (
       <Group key={`squash-${index}`} rotation={degrees}>
-        <Group scaleX={across} scaleY={1 / squash.factor}>
+        <Group scaleX={squash.factor} scaleY={1 / squash.factor}>
           <Group rotation={-degrees}>{inner}</Group>
         </Group>
       </Group>

@@ -211,6 +211,13 @@ describe('squashing', () => {
     expect(scene.pieces[0]!.squashes).toHaveLength(1)
   })
 
+  it('merges a swipe from the opposite side, which is the same axis', () => {
+    let scene = addSquash(withPiece(), 'a', { angle: 0.4, factor: 1.5 })
+    scene = addSquash(scene, 'a', { angle: 0.4 + Math.PI, factor: 1.5 })
+    expect(scene.pieces[0]!.squashes).toHaveLength(1)
+    expect(scene.pieces[0]!.squashes![0]!.factor).toBeCloseTo(2.25)
+  })
+
   it('caps how far one axis can be crushed, however many times it is hit', () => {
     let scene = withPiece()
     for (let i = 0; i < 40; i++) scene = addSquash(scene, 'a', { angle: 0, factor: 1.5 })
@@ -327,15 +334,72 @@ describe('slicing splits a piece in two', () => {
   })
 })
 
-describe('piece edits', () => {
-  it('toggles flip', () => {
-    const scene = flipPiece(withPiece(), 'a')
-    expect(scene.pieces[0]!.flipX).toBe(true)
+describe('flipping', () => {
+  /** A piece with everything on it that a flip has to carry along. */
+  const awkward = (): Scene =>
+    updatePiece(withPiece(), 'a', {
+      scale: 1.4,
+      rotation: 0.8,
+      squashes: [{ angle: 0.5, factor: 2 }],
+      pivot: { x: 12, y: -7 },
+    })
+
+  /** Where a point of the sprite lands on the picture. */
+  const onScreen = (scene: Scene, point: { x: number; y: number }) => {
+    const piece = scene.pieces[0]!
+    const moved = apply(pieceMatrix(piece), point)
+    return { x: piece.x + moved.x, y: piece.y + moved.y }
+  }
+
+  const PROBE = { x: 40, y: 25 }
+
+  it('mirrors left to right on the picture, however the piece is turned', () => {
+    const before = awkward()
+    const after = flipPiece(before, 'a', 'x')
+
+    const was = onScreen(before, PROBE)
+    const now = onScreen(after, PROBE)
+    // Mirrored about the piece's own centre: same height, opposite side.
+    expect(now.x - after.pieces[0]!.x).toBeCloseTo(-(was.x - before.pieces[0]!.x))
+    expect(now.y - after.pieces[0]!.y).toBeCloseTo(was.y - before.pieces[0]!.y)
   })
 
+  it('mirrors top to bottom on the picture, however the piece is turned', () => {
+    const before = awkward()
+    const after = flipPiece(before, 'a', 'y')
+
+    const was = onScreen(before, PROBE)
+    const now = onScreen(after, PROBE)
+    expect(now.x - after.pieces[0]!.x).toBeCloseTo(was.x - before.pieces[0]!.x)
+    expect(now.y - after.pieces[0]!.y).toBeCloseTo(-(was.y - before.pieces[0]!.y))
+  })
+
+  it('puts the piece back exactly when flipped the same way twice', () => {
+    for (const axis of ['x', 'y'] as const) {
+      const before = awkward()
+      const after = flipPiece(flipPiece(before, 'a', axis), 'a', axis)
+      expect(after.pieces[0]!.rotation).toBeCloseTo(before.pieces[0]!.rotation)
+      expect(after.pieces[0]!.flipX).toBeFalsy()
+    }
+  })
+
+  it('leaves rotation somewhere sane however many times it is flipped', () => {
+    let scene = awkward()
+    for (let i = 0; i < 12; i++) scene = flipPiece(scene, 'a', i % 2 ? 'x' : 'y')
+    expect(Math.abs(scene.pieces[0]!.rotation)).toBeLessThanOrEqual(Math.PI)
+  })
+
+  it('turns an upright piece into a plain mirror, with no rotation to show for it', () => {
+    const scene = flipPiece(withPiece(), 'a', 'x')
+    expect(scene.pieces[0]!.flipX).toBe(true)
+    expect(scene.pieces[0]!.rotation).toBeCloseTo(0)
+  })
+})
+
+describe('piece edits', () => {
   it('ignores edits to a piece that is not there', () => {
     const scene = withPiece()
-    expect(flipPiece(scene, 'ghost')).toBe(scene)
+    expect(flipPiece(scene, 'ghost', 'x')).toBe(scene)
     expect(addSquash(scene, 'ghost', SQUASH)).toBe(scene)
     expect(splitPiece(scene, 'ghost', CUT, 'b')).toBe(scene)
   })

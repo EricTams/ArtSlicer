@@ -59,7 +59,7 @@ describe('pieceMatrix', () => {
     const across = apply(m, { x: 100, y: 0 })
 
     expect(Math.abs(down.y)).toBeCloseTo(25) // 100 / 4
-    expect(Math.abs(across.x)).toBeCloseTo(200) // 100 * sqrt(4)
+    expect(Math.abs(across.x)).toBeCloseTo(400) // 100 * 4 — area is preserved
   })
 
   it('crushes along a diagonal axis, which no axis-aligned scale could do', () => {
@@ -70,9 +70,16 @@ describe('pieceMatrix', () => {
     const onAxis = apply(m, { x: -70.71, y: 70.71 })
     expect(Math.hypot(onAxis.x, onAxis.y)).toBeCloseTo(100 / 3, 1)
 
-    // Perpendicular to it, the piece stretches.
+    // Perpendicular to it, the piece stretches by as much as it was squeezed.
     const offAxis = apply(m, { x: 70.71, y: 70.71 })
-    expect(Math.hypot(offAxis.x, offAxis.y)).toBeCloseTo(100 * Math.sqrt(3), 1)
+    expect(Math.hypot(offAxis.x, offAxis.y)).toBeCloseTo(100 * 3, 1)
+  })
+
+  it('keeps the piece the same area however hard it is crushed', () => {
+    for (const factor of [1.1, 1.35, 2, 4]) {
+      const m = pieceMatrix(piece({ scale: 1, squashes: [{ angle: 0.6, factor }] }))
+      expect(Math.abs(m.a * m.d - m.b * m.c)).toBeCloseTo(1)
+    }
   })
 
   it('is invertible after scale, rotation and several squashes', () => {

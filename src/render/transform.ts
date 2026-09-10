@@ -50,12 +50,18 @@ export function invert(m: Matrix): Matrix | null {
   return { a: m.d / det, b: -m.b / det, c: -m.c / det, d: m.a / det }
 }
 
-/** Conjugating a scale by the crush angle deforms along that axis. */
+/**
+ * Conjugating a scale by the crush angle deforms along that axis.
+ *
+ * The two scales are reciprocal, so the determinant is exactly 1: whatever the
+ * crush takes off one axis it puts back on the other. The piece changes shape
+ * without ever losing area, which is what stops repeated squeezes from quietly
+ * shrinking it away.
+ */
 export function squashMatrix(squash: Squash): Matrix {
-  const across = Math.sqrt(squash.factor)
   return multiply(
     rotation(squash.angle),
-    multiply(scaling(across, 1 / squash.factor), rotation(-squash.angle)),
+    multiply(scaling(squash.factor, 1 / squash.factor), rotation(-squash.angle)),
   )
 }
 
