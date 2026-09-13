@@ -447,3 +447,26 @@ describe('when the host tab is suspended', () => {
     expect(reduce(untimed, { type: 'SUSPENDED', gap: 5000 }).state).toBe(untimed)
   })
 })
+
+describe('a player who built nothing', () => {
+  it('still puts the round to a vote once their blank canvas arrives', () => {
+    // Auto-submit sends whatever is on the canvas, blank included, so the
+    // round has the two entries voting needs.
+    const state = submitAll(started(['a', 'b']), ['a', 'b'])
+
+    expect(state.phase).toBe('voting')
+    expect(state.submissions).toHaveLength(2)
+  })
+
+  it('costs everyone the round when nothing is sent at all', () => {
+    // What withholding a blank used to do. One entry is nothing to choose
+    // between, so voting is skipped — and the player who did build something
+    // scores nothing either, which is why the blank is worth sending.
+    let state = submitAll(started(['a', 'b']), ['a'])
+    state = reduce(state, { type: 'TICK', now: T0 + BUILD_MS }).state
+
+    expect(state.phase).toBe('roundResults')
+    expect(state.submissions).toHaveLength(1)
+    expect(state.players.every((player) => player.score === 0)).toBe(true)
+  })
+})

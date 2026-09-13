@@ -57,9 +57,10 @@ export function BuildScreen({
 
     const timer = setTimeout(() => {
       autoSentFor.current = deadline
-      // An untouched canvas is not work anyone is about to lose, and a blank
-      // entry on the ballot is worse than no entry at all.
-      if (sceneRef.current.pieces.length === 0) return
+      // Sent even when the canvas is untouched. A blank square on the ballot
+      // costs nothing and will never win, whereas withholding it can drop the
+      // round under the two entries voting needs — and then the players who
+      // did build something get no votes and no points either.
       setSent(true)
       onSubmit(sceneRef.current)
     }, autoSubmitDelay(deadline, clockOffset, Date.now()))
