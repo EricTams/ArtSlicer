@@ -343,3 +343,16 @@ export function withFreshIds(node: SceneNode, id: string): SceneNode {
     children: node.children.map((child, index) => withFreshIds(child, `${id}-${index}`)),
   }
 }
+
+
+/**
+ * How far a node reaches from its own origin, before its scale is applied.
+ *
+ * What anything that wants to sit *outside* a node needs to know. A sprite is
+ * a couple of hundred units across and a combo of several is a lot more, so a
+ * fixed distance that clears one will be buried inside the other.
+ */
+export function reachOf(node: SceneNode): number {
+  const box = localBox(node)
+  return Math.hypot(box.width / 2, box.height / 2)
+}
