@@ -14,6 +14,7 @@ import {
   type RevealedEntry,
 } from '../shared/protocol'
 import { type PlayerId, type RoomState, createRoom, publicPlayers } from '../shared/gameState'
+import { randomUUID } from '../shared/randomId'
 import { sanitizeScene } from '../shared/scene'
 import { loadRoom, saveRoom } from './persistence'
 import { ballotFor, canStart, reduce } from './reducer'
@@ -207,7 +208,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
             type: 'SUBMIT',
             playerId,
             scene,
-            entryId: crypto.randomUUID().slice(0, 8),
+            entryId: randomUUID().slice(0, 8),
             now: Date.now(),
           }),
         )

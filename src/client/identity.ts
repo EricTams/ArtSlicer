@@ -1,4 +1,5 @@
 import type { PlayerId } from '../shared/gameState'
+import { randomUUID } from '../shared/randomId'
 
 const STORAGE_KEY = 'artslicer.identity'
 
@@ -21,7 +22,7 @@ export interface Identity {
 }
 
 function randomId(): string {
-  return crypto.randomUUID()
+  return randomUUID()
 }
 
 /**

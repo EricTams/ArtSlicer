@@ -7,6 +7,7 @@ import { SceneView } from '../render/SceneView'
 import type { Cut, Placed, Scene, Squash } from '../shared/scene'
 import { MAX_CUTS_PER_PIECE, MAX_PIECES, emptyScene } from '../shared/scene'
 import { PartsTray } from './PartsTray'
+import { randomUUID } from '../shared/randomId'
 import { isOverCanvas, toScene } from './canvasCoords'
 import { EMPTY_JAR, type Jar } from './paint'
 import {
@@ -111,7 +112,7 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
 
   const place = useCallback(
     (pieceId: string, at?: { x: number; y: number }) => {
-      const id = crypto.randomUUID().slice(0, 8)
+      const id = randomUUID().slice(0, 8)
       commit(addPiece(sceneRef.current, pieceId, id, at))
       setSelectedId(id)
     },
@@ -289,7 +290,7 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
                 sceneRef.current,
                 selected.id,
                 cut,
-                crypto.randomUUID().slice(0, 8),
+                randomUUID().slice(0, 8),
                 separation,
               ),
             )
