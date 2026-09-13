@@ -3,7 +3,7 @@ import type { ReactNode, Ref } from 'react'
 import { Layer, Rect, Stage } from 'react-konva'
 
 import { DESIGN_SIZE, type Scene } from '../shared/scene'
-import { PieceNode } from './PieceView'
+import { SceneNodeView } from './PieceView'
 
 interface Props {
   scene: Scene
@@ -57,9 +57,9 @@ export function SceneView({
         {[...scene.pieces]
           .sort((a, b) => a.z - b.z)
           .map((piece) => (
-            <PieceNode
+            <SceneNodeView
               key={piece.id}
-              piece={piece}
+              node={piece}
               interactive={interactive}
               draggable={draggable}
               onSelect={onSelect}

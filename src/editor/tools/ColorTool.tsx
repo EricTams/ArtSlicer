@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { Placed } from '../../shared/scene'
+import type { SceneNode } from '../../shared/scene'
 import {
   EMPTY_JAR,
   type Jar,
@@ -29,7 +29,7 @@ export function ColorTool({
   onSprayEnd,
   onClose,
 }: {
-  piece: Placed
+  piece: SceneNode
   /** Held by the editor so a mixed colour survives across pieces. */
   jar: Jar
   onJarChange(jar: Jar): void

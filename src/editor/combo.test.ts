@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import { apply, multiply, squashMatrix } from '../render/transform2d'
-import type { Combo, Placed, SceneNode } from '../shared/scene'
+import {
+  MAX_COMBO_DEPTH,
+  MAX_PIECES,
+  type Combo,
+  type Placed,
+  type Scene,
+  type SceneNode,
+  isCombo,
+  sanitizeScene,
+} from '../shared/scene'
 import { addToCombo, leafCount, leaves, makeCombo, nodeMatrix, worldMatrix } from './combo'
 
 function piece(over: Partial<Placed> = {}): Placed {
@@ -216,5 +225,56 @@ describe('nodeMatrix', () => {
     // The pivot point is what stays put under rotation.
     expect(p.x).toBeCloseTo(0)
     expect(p.y).toBeCloseTo(0)
+  })
+})
+
+describe('a combo in a scene', () => {
+  it('survives the wire, children and all', () => {
+    const combo = makeCombo(
+      [piece({ id: 'a', x: 20, y: 10, rotation: 0.3 }), piece({ id: 'b', x: -40, y: 60 })],
+      'c',
+    )
+    const scene: Scene = { pieces: [combo] }
+
+    const back = sanitizeScene(JSON.parse(JSON.stringify(scene)), () => true)
+    expect(back).not.toBeNull()
+    const node = back!.pieces[0]!
+    expect(isCombo(node)).toBe(true)
+    expect((node as Combo).children).toHaveLength(2)
+  })
+
+  it('drops a combo holding nothing, which would only be a transform to walk', () => {
+    const empty = { ...makeCombo([piece({ id: 'a' })], 'c'), children: [] }
+    const back = sanitizeScene({ pieces: [empty] }, () => true)
+    expect(back!.pieces).toHaveLength(0)
+  })
+
+  it('refuses to nest past the depth limit', () => {
+    let node: SceneNode = piece({ id: 'leaf' })
+    for (let i = 0; i < MAX_COMBO_DEPTH + 3; i++) node = makeCombo([node], `c${i}`)
+
+    const back = sanitizeScene(JSON.parse(JSON.stringify({ pieces: [node] })), () => true)
+    // Too deep to keep, and the whole branch goes rather than half of it.
+    expect(back!.pieces).toHaveLength(0)
+  })
+
+  it('counts sprites across the whole tree against the piece limit', () => {
+    // Each combo holds a handful; together they ask for more than is allowed.
+    const many = Array.from({ length: 10 }, (_, c) =>
+      makeCombo(
+        Array.from({ length: 5 }, (_, i) => piece({ id: `p${c}-${i}` })),
+        `c${c}`,
+      ),
+    )
+    const back = sanitizeScene(JSON.parse(JSON.stringify({ pieces: many })), () => true)
+    const kept = back!.pieces.reduce((sum, node) => sum + leafCount(node), 0)
+    expect(kept).toBeLessThanOrEqual(MAX_PIECES)
+    expect(kept).toBeGreaterThan(0)
+  })
+
+  it('throws away a child whose sprite is not in the manifest', () => {
+    const combo = makeCombo([piece({ id: 'a', pieceId: 'real' }), piece({ id: 'b', pieceId: 'fake' })], 'c')
+    const back = sanitizeScene(JSON.parse(JSON.stringify({ pieces: [combo] })), (id) => id === 'real')
+    expect(leafCount(back!.pieces[0]!)).toBe(1)
   })
 })

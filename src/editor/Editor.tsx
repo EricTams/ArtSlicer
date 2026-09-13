@@ -4,7 +4,7 @@ import { Circle, Line } from 'react-konva'
 import { pieceAt } from '../render/hitTest'
 import { HANDLE_DRAW_RADIUS, handlePosition } from './handle'
 import { SceneView } from '../render/SceneView'
-import type { Cut, Placed, Scene, Squash } from '../shared/scene'
+import type { Cut, Scene, SceneNode, Squash } from '../shared/scene'
 import { MAX_CUTS_PER_PIECE, MAX_PIECES, emptyScene } from '../shared/scene'
 import { PartsTray } from './PartsTray'
 import { randomUUID } from '../shared/randomId'
@@ -360,7 +360,7 @@ export function Editor({ initialScene, prompt, onChange, action }: Props) {
  * ring around the piece's centre rather than a bounding box, because a sliced
  * and squashed piece has no meaningful box.
  */
-function SelectionRing({ piece }: { piece: Placed }) {
+function SelectionRing({ piece }: { piece: SceneNode }) {
   const handle = handlePosition(piece)
 
   return (

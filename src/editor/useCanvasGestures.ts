@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-import { DESIGN_SIZE, type Placed } from '../shared/scene'
+import { DESIGN_SIZE, type SceneNode } from '../shared/scene'
 import { isOverCanvas, toScene as toSceneCoords } from './canvasCoords'
 import { isOnHandle } from './handle'
 
@@ -43,8 +43,8 @@ type Mode = 'move' | 'handle'
 export function useCanvasGestures(
   element: HTMLDivElement | null,
   size: number,
-  pieceAt: (x: number, y: number) => Placed | null,
-  selectedPiece: () => Placed | null,
+  pieceAt: (x: number, y: number) => SceneNode | null,
+  selectedPiece: () => SceneNode | null,
   handlers: Gesture,
 ): void {
   // Held in a ref so the listeners, attached once, always see current state.
@@ -55,7 +55,7 @@ export function useCanvasGestures(
     if (!element) return
 
     const pointers = new Map<number, { x: number; y: number }>()
-    let target: Placed | null = null
+    let target: SceneNode | null = null
     let mode: Mode = 'move'
     let moved = false
     let anchor: Anchor | null = null
@@ -66,7 +66,7 @@ export function useCanvasGestures(
       toSceneCoords(element, latest.current.size, clientX, clientY)
 
     /** Re-reads the piece, so each leg starts from where it actually is now. */
-    const anchorTo = (piece: Placed, clientX: number, clientY: number): void => {
+    const anchorTo = (piece: SceneNode, clientX: number, clientY: number): void => {
       target = piece
       anchor = {
         clientX,
@@ -78,7 +78,7 @@ export function useCanvasGestures(
       }
     }
 
-    const current = (): Placed | null => {
+    const current = (): SceneNode | null => {
       if (!target) return null
       // The stored object is a snapshot; find the live one by id.
       return latest.current.selectedPiece()?.id === target.id

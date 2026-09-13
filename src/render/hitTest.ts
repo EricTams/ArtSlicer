@@ -1,44 +1,48 @@
-import type { Placed, Scene } from '../shared/scene'
+import { nodeMatrix } from '../editor/combo'
+import type { Scene, SceneNode } from '../shared/scene'
+import { isCombo } from '../shared/scene'
 import { getPiece } from './pieces'
-import { apply, invert, pieceMatrix } from './transform'
+import { apply, determinant, invert } from './transform2d'
 
 /**
- * The topmost piece under a point, in scene coordinates.
+ * The topmost node under a point, in scene coordinates.
  *
  * Konva could answer this, but the canvas is driven by raw pointer events so
  * that two-finger gestures work, and this keeps hit-testing on the same
  * transform maths the slice tool uses rather than a second source of truth.
+ *
+ * A combo answers for everything inside it: touching any part of one picks up
+ * the whole thing, which is what makes it one object to handle.
  */
-export function pieceAt(scene: Scene, x: number, y: number): Placed | null {
+export function pieceAt(scene: Scene, x: number, y: number): SceneNode | null {
   const ordered = [...scene.pieces].sort((a, b) => b.z - a.z)
 
-  for (const piece of ordered) {
-    if (containsPoint(piece, x, y)) return piece
+  for (const node of ordered) {
+    if (containsPoint(node, x, y)) return node
   }
   return null
 }
 
-export function containsPoint(piece: Placed, x: number, y: number): boolean {
-  const def = getPiece(piece.pieceId)
-  if (!def) return false
-
-  const matrix = invert(pieceMatrix(piece))
+export function containsPoint(node: SceneNode, x: number, y: number): boolean {
+  const matrix = nodeMatrix(node)
   // Fully collapsed: nothing left to hit.
-  if (!matrix) return false
+  if (Math.abs(determinant(matrix)) < 1e-9) return false
 
-  // Back into the sprite's own coordinates, where the bounds and cuts live.
-  const relative = apply(matrix, { x: x - piece.x, y: y - piece.y })
-  const local = {
-    x: relative.x + (piece.pivot?.x ?? 0),
-    y: relative.y + (piece.pivot?.y ?? 0),
-  }
+  // Back into the node's own coordinates, where the bounds and cuts live. The
+  // matrix carries the pivot, so this lands in sprite space directly.
+  const local = apply(invert(matrix), x, y)
 
-  // Inside the sprite's box…
-  if (Math.abs(local.x) > def.width / 2 || Math.abs(local.y) > def.height / 2) return false
-
-  // …and on the kept side of every slice.
-  for (const cut of piece.cuts ?? []) {
+  // A slice on a combo clips everything inside it, so it rules out a hit
+  // before any child is asked.
+  for (const cut of node.cuts ?? []) {
     if (cut.nx * local.x + cut.ny * local.y > cut.d) return false
   }
-  return true
+
+  if (isCombo(node)) {
+    return node.children.some((child) => containsPoint(child, local.x, local.y))
+  }
+
+  const def = getPiece(node.pieceId)
+  if (!def) return false
+  return Math.abs(local.x) <= def.width / 2 && Math.abs(local.y) <= def.height / 2
 }

@@ -1,5 +1,6 @@
 import {
   IDENTITY,
+  apply,
   type Mat,
   compose,
   decompose,
@@ -10,6 +11,7 @@ import {
   squashMatrix,
   translation,
 } from '../render/transform2d'
+import { getPiece } from '../render/pieces'
 import type { Combo, Placed, SceneNode, Transformed } from '../shared/scene'
 import { isCombo } from '../shared/scene'
 
@@ -117,4 +119,42 @@ export function makeCombo(members: readonly SceneNode[], id: string): Combo {
 /** Adds one more node to an existing combo, without it appearing to move. */
 export function addToCombo(combo: Combo, node: SceneNode): Combo {
   return { ...combo, children: [...combo.children, rebase(node, combo)] }
+}
+
+/**
+ * A box in the node's own space big enough to hold everything it draws.
+ *
+ * A sprite knows its own size; a combo has to ask its children and allow for
+ * where each of them sits. Used where a single extent stands in for the whole
+ * node — recentring after a slice, most of all, which otherwise has nothing to
+ * take a middle of.
+ *
+ * Axis-aligned and centred on the node's origin, so it is generous for a combo
+ * whose contents sit off to one side. That costs a slightly loose box and
+ * never a wrong one.
+ */
+export function localBox(node: SceneNode): { width: number; height: number } {
+  if (!isCombo(node)) {
+    const def = getPiece(node.pieceId)
+    return def ? { width: def.width, height: def.height } : { width: 0, height: 0 }
+  }
+
+  let halfWidth = 0
+  let halfHeight = 0
+  for (const child of node.children) {
+    const box = localBox(child)
+    const matrix = nodeMatrix(child)
+    const corners: Array<[number, number]> = [
+      [-box.width / 2, -box.height / 2],
+      [box.width / 2, -box.height / 2],
+      [box.width / 2, box.height / 2],
+      [-box.width / 2, box.height / 2],
+    ]
+    for (const [cx, cy] of corners) {
+      const point = apply(matrix, cx, cy)
+      halfWidth = Math.max(halfWidth, Math.abs(point.x))
+      halfHeight = Math.max(halfHeight, Math.abs(point.y))
+    }
+  }
+  return { width: halfWidth * 2, height: halfHeight * 2 }
 }

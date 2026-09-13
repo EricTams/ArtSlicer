@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { Group, Image as KonvaImage } from 'react-konva'
 
-import type { Placed, Squash } from '../shared/scene'
+import type { Placed, SceneNode, Squash } from '../shared/scene'
+import { isCombo } from '../shared/scene'
 import { clipPolygon } from './clip'
 import { getImage, getPiece } from './pieces'
 import { tinted } from './tint'
@@ -17,6 +18,77 @@ import { tinted } from './tint'
  * springs back upright can carry a crush along any axis, which an axis-aligned
  * scale cannot express.
  */
+/**
+ * One node of a scene: a sprite, or a combo holding more nodes.
+ *
+ * Both wear the same transform, which is the whole point — a combo turns,
+ * sizes and crushes exactly as a piece does, and everything inside it comes
+ * along because it is drawn inside that transform rather than beside it.
+ */
+export function SceneNodeView({
+  node,
+  interactive = false,
+  draggable = false,
+  onSelect,
+  onDragEnd,
+  overrideRotation,
+  extraSquashes,
+}: {
+  node: SceneNode
+  interactive?: boolean
+  draggable?: boolean
+  onSelect?: (id: string) => void
+  onDragEnd?: (id: string, x: number, y: number) => void
+  overrideRotation?: number
+  extraSquashes?: readonly Squash[]
+}) {
+  if (!isCombo(node)) {
+    return (
+      <PieceNode
+        piece={node}
+        interactive={interactive}
+        draggable={draggable}
+        onSelect={onSelect}
+        onDragEnd={onDragEnd}
+        overrideRotation={overrideRotation}
+        extraSquashes={extraSquashes}
+      />
+    )
+  }
+
+  const squashes = [...(node.squashes ?? []), ...(extraSquashes ?? [])]
+  const rotation = overrideRotation ?? node.rotation
+
+  return (
+    <Group
+      id={node.id}
+      name="piece"
+      x={node.x}
+      y={node.y}
+      rotation={(rotation * 180) / Math.PI}
+      scaleX={node.scale * (node.flipX ? -1 : 1)}
+      scaleY={node.scale}
+      listening={interactive}
+      draggable={draggable}
+      onMouseDown={() => onSelect?.(node.id)}
+      onTouchStart={() => onSelect?.(node.id)}
+      onDragEnd={(e) => onDragEnd?.(node.id, e.target.x(), e.target.y())}
+    >
+      <Squashed squashes={squashes}>
+        <Group x={-(node.pivot?.x ?? 0)} y={-(node.pivot?.y ?? 0)}>
+          {/* Children are drawn back to front among themselves; the combo as a
+              whole sits at its own z among everything else. */}
+          {[...node.children]
+            .sort((a, b) => a.z - b.z)
+            .map((child) => (
+              <SceneNodeView key={child.id} node={child} interactive={false} />
+            ))}
+        </Group>
+      </Squashed>
+    </Group>
+  )
+}
+
 export function PieceNode({
   piece,
   interactive = false,

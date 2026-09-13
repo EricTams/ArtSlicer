@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 
-import { MAX_SQUASH, type Placed, type Squash } from '../../shared/scene'
+import { MAX_SQUASH, type Squash, type SceneNode } from '../../shared/scene'
 import { capturePointer } from '../pointer'
 import { crushAngle, squeezeFactor } from '../squish'
 import { PiecePreview, ToolShell } from './ToolShell'
@@ -49,7 +49,7 @@ export function SquishTool({
   onSqueeze,
   onClose,
 }: {
-  piece: Placed
+  piece: SceneNode
   /** Applied straight away — each squeeze is its own undo step. */
   onSqueeze(squash: Squash): void
   onClose(): void

@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 import { Layer, Stage } from 'react-konva'
 
-import { PieceNode } from '../../render/PieceView'
-import { DESIGN_SIZE, type Placed, type Squash } from '../../shared/scene'
+import { SceneNodeView } from '../../render/PieceView'
+import { DESIGN_SIZE, type Squash, type SceneNode } from '../../shared/scene'
 
 /**
  * Full-screen chrome shared by every tool: a title and a way back.
@@ -48,7 +48,7 @@ export function PieceStage({
   rotation,
   extraSquashes,
 }: {
-  pieces: readonly Placed[]
+  pieces: readonly SceneNode[]
   size: number
   /** Overrides each piece's own angle, for tools that turn it while previewing. */
   rotation?: number
@@ -61,9 +61,9 @@ export function PieceStage({
     <Stage width={size} height={size} scaleX={scale} scaleY={scale} listening={false}>
       <Layer listening={false}>
         {pieces.map((piece) => (
-          <PieceNode
+          <SceneNodeView
             key={piece.id}
-            piece={piece}
+            node={piece}
             overrideRotation={rotation}
             extraSquashes={extraSquashes}
           />
@@ -80,12 +80,12 @@ export function PiecePreview({
   rotation,
   extraSquashes,
 }: {
-  piece: Placed
+  piece: SceneNode
   size: number
   rotation?: number
   extraSquashes?: readonly Squash[]
 }) {
-  const centred: Placed = { ...piece, x: DESIGN_SIZE / 2, y: DESIGN_SIZE / 2 }
+  const centred: SceneNode = { ...piece, x: DESIGN_SIZE / 2, y: DESIGN_SIZE / 2 }
   return (
     <PieceStage pieces={[centred]} size={size} rotation={rotation} extraSquashes={extraSquashes} />
   )

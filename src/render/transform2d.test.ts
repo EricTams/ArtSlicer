@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { nodeMatrix } from '../editor/combo'
+import type { Placed } from '../shared/scene'
+import { pieceMatrix } from './transform'
 import {
   IDENTITY,
   type Mat,
@@ -133,5 +136,54 @@ describe('decompose', () => {
   it('reports a mirror only when one is present', () => {
     expect(decompose(rotation(3)).flipX).toBe(false)
     expect(decompose(compose(rotation(3), scaling(-2, 2))).flipX).toBe(true)
+  })
+})
+
+describe('agreement with the slice tool’s transform module', () => {
+  it('builds the same linear map as pieceMatrix, for every shape of piece', () => {
+    /*
+     * render/transform.ts predates this and carries a 2x2 linear map without
+     * translation, used by hit-testing and slicing. Two modules composing the
+     * same nesting is exactly the drift its own comment warns about, so the
+     * two are held together here: if either changes its order or its sign
+     * convention, this fails rather than the artwork quietly going wrong.
+     */
+    const pieces: Placed[] = [
+      { id: 'a', pieceId: 'x', x: 0, y: 0, scale: 1, rotation: 0, z: 0 },
+      { id: 'b', pieceId: 'x', x: 10, y: 20, scale: 2.3, rotation: 0.8, z: 0 },
+      { id: 'c', pieceId: 'x', x: 0, y: 0, scale: 1.4, rotation: -2, flipX: true, z: 0 },
+      {
+        id: 'd',
+        pieceId: 'x',
+        x: 0,
+        y: 0,
+        scale: 0.6,
+        rotation: 1.1,
+        squashes: [{ angle: 0.3, factor: 1.9 }],
+        z: 0,
+      },
+      {
+        id: 'e',
+        pieceId: 'x',
+        x: 0,
+        y: 0,
+        scale: 1.2,
+        rotation: -0.4,
+        flipX: true,
+        squashes: [
+          { angle: 0.2, factor: 1.5 },
+          { angle: -1.3, factor: 2.1 },
+        ],
+        z: 0,
+      },
+    ]
+
+    for (const piece of pieces) {
+      const theirs = pieceMatrix(piece)
+      const mine = nodeMatrix(piece)
+      for (const key of ['a', 'b', 'c', 'd'] as const) {
+        near(mine[key], theirs[key], 1e-9)
+      }
+    }
   })
 })

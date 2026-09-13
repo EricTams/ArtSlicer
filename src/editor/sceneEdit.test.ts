@@ -10,7 +10,9 @@ import {
   MIN_SCALE,
   type Placed,
   type Scene,
+  type SceneNode,
   emptyScene,
+  isCombo,
 } from '../shared/scene'
 import {
   type History,
@@ -51,6 +53,16 @@ function spriteOrigin(piece: Placed): { x: number; y: number } {
 
 function withPiece(id = 'a'): Scene {
   return addPiece(emptyScene(), 'pom-pom', id)
+}
+
+
+/**
+ * Narrows a scene node to the sprite these tests are about. A combo reaching
+ * one of them is a bug in the test, not a case to handle.
+ */
+function sprite(node: SceneNode): Placed {
+  if (isCombo(node)) throw new Error('expected a sprite, got a combo')
+  return node
 }
 
 describe('addPiece', () => {
@@ -149,27 +161,27 @@ describe('transformPiece', () => {
 describe('spraying paint', () => {
   it('lays down the mixed colour at the strength sprayed', () => {
     const scene = sprayPiece(withPiece(), 'a', '#ff0000', 0.4)
-    expect(scene.pieces[0]!.tint).toEqual({ color: '#ff0000', amount: 0.4 })
+    expect(sprite(scene.pieces[0]!).tint).toEqual({ color: '#ff0000', amount: 0.4 })
   })
 
   it('builds up with repeated sprays of the same colour', () => {
     let scene = sprayPiece(withPiece(), 'a', '#ff0000', 0.3)
     scene = sprayPiece(scene, 'a', '#ff0000', 0.3)
-    expect(scene.pieces[0]!.tint!.amount).toBeCloseTo(0.6)
-    expect(scene.pieces[0]!.tint!.color).toBe('#ff0000')
+    expect(sprite(scene.pieces[0]!).tint!.amount).toBeCloseTo(0.6)
+    expect(sprite(scene.pieces[0]!).tint!.color).toBe('#ff0000')
   })
 
   it('blends a second colour into what is already there', () => {
     let scene = sprayPiece(withPiece(), 'a', '#ff0000', 0.5)
     scene = sprayPiece(scene, 'a', '#0000ff', 0.5)
     // Equal amounts of red and blue land halfway between them.
-    expect(scene.pieces[0]!.tint!.color).toBe('#800080')
+    expect(sprite(scene.pieces[0]!).tint!.color).toBe('#800080')
   })
 
   it('never exceeds fully painted', () => {
     let scene = sprayPiece(withPiece(), 'a', '#ff0000', 0.9)
     scene = sprayPiece(scene, 'a', '#ff0000', 0.9)
-    expect(scene.pieces[0]!.tint!.amount).toBe(1)
+    expect(sprite(scene.pieces[0]!).tint!.amount).toBe(1)
   })
 
   it('ignores a zero-length spray', () => {
@@ -179,7 +191,7 @@ describe('spraying paint', () => {
 
   it('clears back to the bare sprite', () => {
     const scene = clearTint(sprayPiece(withPiece(), 'a', '#ff0000', 0.5), 'a')
-    expect(scene.pieces[0]!.tint).toBeUndefined()
+    expect(sprite(scene.pieces[0]!).tint).toBeUndefined()
   })
 })
 
@@ -257,7 +269,7 @@ describe('slicing splits a piece in two', () => {
     scene = splitPiece(scene, 'a', CUT, 'b')
 
     for (const piece of scene.pieces) {
-      expect(piece.tint!.color).toBe('#ff0000')
+      expect(sprite(piece).tint!.color).toBe('#ff0000')
       expect(piece.squashes).toEqual([SQUASH])
       expect(piece.rotation).toBe(0.8)
       expect(piece.scale).toBe(1.5)
@@ -294,7 +306,7 @@ describe('slicing splits a piece in two', () => {
     // Moving the origin must not move the picture. The sprite should sit
     // exactly where it did, offset only by the deliberate nudge.
     for (const half of scene.pieces) {
-      const drift = spriteOrigin(half)
+      const drift = spriteOrigin(sprite(half))
       expect(Math.hypot(drift.x - before.x, drift.y - before.y)).toBeCloseTo(NUDGE, 1)
     }
   })
@@ -307,7 +319,7 @@ describe('slicing splits a piece in two', () => {
     // Same invariant through a rotation and a scale — the nudge grows with the
     // piece, and nothing else shifts.
     for (const half of scene.pieces) {
-      const drift = spriteOrigin(half)
+      const drift = spriteOrigin(sprite(half))
       expect(Math.hypot(drift.x - before.x, drift.y - before.y)).toBeCloseTo(NUDGE * 2, 1)
     }
   })

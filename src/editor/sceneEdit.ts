@@ -8,13 +8,16 @@ import {
   MAX_SQUASHES_PER_PIECE,
   MIN_SCALE,
   type Placed,
+  type SceneNode,
+  type Transformed,
+  isCombo,
   type Scene,
   type Squash,
   type Tint,
   topZ,
 } from '../shared/scene'
+import { localBox } from './combo'
 import { clipPolygon, invertCut, polygonCentroid } from '../render/clip'
-import { getPiece } from '../render/pieces'
 import { apply, pieceMatrix } from '../render/transform'
 
 /**
@@ -44,7 +47,7 @@ export function addPiece(
   return { ...scene, pieces: [...scene.pieces, piece] }
 }
 
-export function updatePiece(scene: Scene, id: string, changes: Partial<Placed>): Scene {
+export function updatePiece(scene: Scene, id: string, changes: Partial<Transformed>): Scene {
   return {
     ...scene,
     pieces: scene.pieces.map((piece) => (piece.id === id ? { ...piece, ...changes } : piece)),
@@ -77,7 +80,7 @@ export function sendToBack(scene: Scene, id: string): Scene {
 }
 
 /** Draw order, back to front — the order SceneView paints in. */
-function stacking(scene: Scene): Placed[] {
+function stacking(scene: Scene): SceneNode[] {
   return [...scene.pieces].sort((a, b) => a.z - b.z)
 }
 
@@ -159,32 +162,45 @@ function wrapAngle(radians: number): number {
  * Spraying the same colour twice simply makes it stronger.
  */
 export function sprayPiece(scene: Scene, id: string, color: string, delta: number): Scene {
-  const piece = find(scene, id)
-  if (!piece || delta <= 0) return scene
+  const node = find(scene, id)
+  if (!node || delta <= 0) return scene
+  // Paint lives on the sprite, so spraying a combo reaches every sprite in it.
+  return replace(scene, mapLeaves(node, (piece) => ({ ...piece, tint: blend(piece.tint, color, delta) })))
+}
 
-  const existing = piece.tint
-  if (!existing || existing.amount <= 0) {
-    return updatePiece(scene, id, { tint: { color, amount: Math.min(1, delta) } })
-  }
+/** Layers `color` over whatever is already there, weighted by how much of each. */
+function blend(existing: Tint | undefined, color: string, delta: number): Tint {
+  if (!existing || existing.amount <= 0) return { color, amount: Math.min(1, delta) }
 
   const total = existing.amount + delta
   const [r1, g1, b1] = parseHex(existing.color)
   const [r2, g2, b2] = parseHex(color)
   const mix = (a: number, b: number): number => (a * existing.amount + b * delta) / total
 
-  const blended: Tint = {
+  return {
     color: toHex(mix(r1, r2), mix(g1, g2), mix(b1, b2)),
     amount: Math.min(1, total),
   }
-  return updatePiece(scene, id, { tint: blended })
 }
 
 export function clearTint(scene: Scene, id: string): Scene {
-  const piece = find(scene, id)
-  if (!piece?.tint) return scene
-  const next = { ...piece }
-  delete next.tint
-  return replace(scene, next)
+  const node = find(scene, id)
+  if (!node) return scene
+  return replace(
+    scene,
+    mapLeaves(node, (piece) => {
+      const next = { ...piece }
+      delete next.tint
+      return next
+    }),
+  )
+}
+
+/** Applies a change to every sprite under a node, combo or not. */
+export function mapLeaves(node: SceneNode, change: (piece: Placed) => Placed): SceneNode {
+  return isCombo(node)
+    ? { ...node, children: node.children.map((child) => mapLeaves(child, change)) }
+    : change(node)
 }
 
 /**
@@ -303,11 +319,11 @@ export function setBackground(scene: Scene, color: string): Scene {
  * thin offcut would turn and crush about a point outside itself, and its
  * selection ring and handle would float in empty space beside it.
  */
-function recentre(piece: Placed, cuts: Cut[]): Placed {
-  const def = getPiece(piece.pieceId)
-  if (!def) return { ...piece, cuts }
+function recentre(piece: SceneNode, cuts: Cut[]): SceneNode {
+  const box = localBox(piece)
+  if (box.width === 0 || box.height === 0) return { ...piece, cuts }
 
-  const polygon = clipPolygon(def.width, def.height, cuts)
+  const polygon = clipPolygon(box.width, box.height, cuts)
   // Nothing left of this side; leave the origin alone rather than divide by it.
   if (polygon.length === 0) return { ...piece, cuts }
 
@@ -325,7 +341,7 @@ function recentre(piece: Placed, cuts: Cut[]): Placed {
   return { ...piece, cuts, pivot, x: piece.x + shift.x, y: piece.y + shift.y }
 }
 
-function nudged(piece: Placed, direction: { x: number; y: number }, amount: number): Placed {
+function nudged(piece: SceneNode, direction: { x: number; y: number }, amount: number): SceneNode {
   return { ...piece, x: piece.x + direction.x * amount, y: piece.y + direction.y * amount }
 }
 
@@ -334,11 +350,11 @@ function normalize(v: { x: number; y: number }): { x: number; y: number } {
   return length < 1e-6 ? { x: 1, y: 0 } : { x: v.x / length, y: v.y / length }
 }
 
-function find(scene: Scene, id: string): Placed | undefined {
+function find(scene: Scene, id: string): SceneNode | undefined {
   return scene.pieces.find((piece) => piece.id === id)
 }
 
-function replace(scene: Scene, piece: Placed): Scene {
+function replace(scene: Scene, piece: SceneNode): Scene {
   return { ...scene, pieces: scene.pieces.map((p) => (p.id === piece.id ? piece : p)) }
 }
 

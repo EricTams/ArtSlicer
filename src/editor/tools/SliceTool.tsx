@@ -1,9 +1,9 @@
+import { localBox } from '../combo'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { type Point, cutFromLine, invertCut } from '../../render/clip'
-import { getPiece } from '../../render/pieces'
 import { apply, invert, pieceMatrix } from '../../render/transform'
-import { DESIGN_SIZE, type Cut, type Placed } from '../../shared/scene'
+import { DESIGN_SIZE, type Cut, type SceneNode } from '../../shared/scene'
 import { capturePointer } from '../pointer'
 import { PieceStage, ToolShell } from './ToolShell'
 
@@ -36,7 +36,7 @@ export function SliceTool({
   onCut,
   onClose,
 }: {
-  piece: Placed
+  piece: SceneNode
   /** False when the picture is full, or this piece has been cut all it can be. */
   canSlice: boolean
   onCut(cut: Cut, separation: Point): void
@@ -93,9 +93,10 @@ export function SliceTool({
     if (Math.hypot(to.x - from.x, to.y - from.y) < MIN_SWIPE) return
 
     const centre = { x: STAGE / 2, y: STAGE / 2 }
-    const def = getPiece(piece.pieceId)
-    const radius = def
-      ? (Math.max(def.width, def.height) / 2) * piece.scale * (STAGE / DESIGN_SIZE)
+    // A combo has no sprite of its own, so its extent comes from what is in it.
+    const box = localBox(piece)
+    const radius = box.width
+      ? (Math.max(box.width, box.height) / 2) * piece.scale * (STAGE / DESIGN_SIZE)
       : 60
 
     // Did the swipe pass through the piece, or sail past it?
@@ -195,12 +196,12 @@ export function SliceTool({
   )
 }
 
-function centred(piece: Placed): Placed {
+function centred(piece: SceneNode): SceneNode {
   return { ...piece, x: DESIGN_SIZE / 2, y: DESIGN_SIZE / 2 }
 }
 
 /** The two halves, drifting apart along the cut as the animation runs. */
-function previewHalves(piece: Placed, result: Result, progress: number): Placed[] {
+function previewHalves(piece: SceneNode, result: Result, progress: number): SceneNode[] {
   const spread = CUT_SPREAD * progress * piece.scale
   const existing = piece.cuts ?? []
   const base = centred(piece)

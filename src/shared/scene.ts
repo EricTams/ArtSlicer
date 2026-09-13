@@ -112,12 +112,18 @@ export function isCombo(node: SceneNode): node is Combo {
 }
 
 export interface Scene {
-  pieces: Placed[]
+  /** Top-level nodes. A combo counts as one of these, however much is in it. */
+  pieces: SceneNode[]
   /** `#rrggbb` backdrop, mixed in the colour tool like everything else. */
   bg?: string
 }
 
 export const MAX_PIECES = 25
+/**
+ * How deep combos may nest. Generous for anything anyone would build by hand,
+ * and a hard floor under the recursion that walks an untrusted scene.
+ */
+export const MAX_COMBO_DEPTH = 5
 /** Each squash is another nested transform evaluated every frame. */
 export const MAX_SQUASHES_PER_PIECE = 4
 /** Each cut is another clip edge evaluated every frame. */
@@ -156,24 +162,87 @@ export function sanitizeScene(input: unknown, isKnownPiece: (id: string) => bool
   const raw = input as Record<string, unknown>
   if (!Array.isArray(raw['pieces'])) return null
 
-  const pieces: Placed[] = []
-  for (const entry of raw['pieces'].slice(0, MAX_PIECES)) {
-    const piece = sanitizePlaced(entry, isKnownPiece)
-    if (piece) pieces.push(piece)
+  /*
+   * One budget for the whole tree rather than a cap per level. What costs
+   * anything to draw is sprites, and a scene of nested combos could otherwise
+   * hold any number of them while every individual list looked reasonable.
+   */
+  const budget = { sprites: MAX_PIECES }
+
+  const pieces: SceneNode[] = []
+  for (const entry of raw['pieces']) {
+    if (budget.sprites <= 0) break
+    const node = sanitizeNode(entry, isKnownPiece, budget, 0)
+    if (node) pieces.push(node)
   }
 
   const bg = sanitizeColor(raw['bg'])
   return bg ? { pieces, bg } : { pieces }
 }
 
-function sanitizePlaced(input: unknown, isKnownPiece: (id: string) => boolean): Placed | null {
+interface Budget {
+  sprites: number
+}
+
+function sanitizeNode(
+  input: unknown,
+  isKnownPiece: (id: string) => boolean,
+  budget: Budget,
+  depth: number,
+): SceneNode | null {
   if (typeof input !== 'object' || input === null) return null
   const raw = input as Record<string, unknown>
+  return Array.isArray(raw['children'])
+    ? sanitizeCombo(raw, isKnownPiece, budget, depth)
+    : sanitizePlaced(raw, isKnownPiece, budget)
+}
 
+function sanitizeCombo(
+  raw: Record<string, unknown>,
+  isKnownPiece: (id: string) => boolean,
+  budget: Budget,
+  depth: number,
+): Combo | null {
+  if (depth >= MAX_COMBO_DEPTH) return null
+
+  const base = sanitizeTransformed(raw)
+  if (!base) return null
+
+  const children: SceneNode[] = []
+  for (const entry of raw['children'] as unknown[]) {
+    if (budget.sprites <= 0) break
+    const child = sanitizeNode(entry, isKnownPiece, budget, depth + 1)
+    if (child) children.push(child)
+  }
+
+  // A combo with nothing in it draws nothing and is only a transform to walk.
+  if (children.length === 0) return null
+  return { ...base, children }
+}
+
+function sanitizePlaced(
+  raw: Record<string, unknown>,
+  isKnownPiece: (id: string) => boolean,
+  budget: Budget,
+): Placed | null {
   const pieceId = raw['pieceId']
-  const id = raw['id']
-  if (typeof pieceId !== 'string' || typeof id !== 'string') return null
+  if (typeof pieceId !== 'string') return null
   if (!isKnownPiece(pieceId)) return null
+
+  const base = sanitizeTransformed(raw)
+  if (!base) return null
+
+  budget.sprites -= 1
+
+  const piece: Placed = { ...base, pieceId }
+  const tint = sanitizeTint(raw['tint'])
+  if (tint) piece.tint = tint
+  return piece
+}
+
+function sanitizeTransformed(raw: Record<string, unknown>): Transformed | null {
+  const id = raw['id']
+  if (typeof id !== 'string') return null
 
   const x = num(raw['x'])
   const y = num(raw['y'])
@@ -182,9 +251,8 @@ function sanitizePlaced(input: unknown, isKnownPiece: (id: string) => boolean): 
   const z = num(raw['z'])
   if (x === null || y === null || scale === null || rotation === null || z === null) return null
 
-  const piece: Placed = {
+  const node: Transformed = {
     id: id.slice(0, 64),
-    pieceId,
     // Allow some overhang past the edges — half-off compositions are a
     // legitimate look — but not so far that a piece can vanish or blow up.
     x: clamp(x, -DESIGN_SIZE, DESIGN_SIZE * 2),
@@ -194,7 +262,7 @@ function sanitizePlaced(input: unknown, isKnownPiece: (id: string) => boolean): 
     z: clamp(Math.round(z), -MAX_PIECES * 2, MAX_PIECES * 2),
   }
 
-  if (raw['flipX'] === true) piece.flipX = true
+  if (raw['flipX'] === true) node.flipX = true
 
   const pivot = raw['pivot']
   if (typeof pivot === 'object' && pivot !== null) {
@@ -202,23 +270,20 @@ function sanitizePlaced(input: unknown, isKnownPiece: (id: string) => boolean): 
     const py = num((pivot as Record<string, unknown>)['y'])
     // Bounded by the largest sprite that could plausibly be in the manifest.
     if (px !== null && py !== null) {
-      piece.pivot = {
+      node.pivot = {
         x: clamp(px, -DESIGN_SIZE, DESIGN_SIZE),
         y: clamp(py, -DESIGN_SIZE, DESIGN_SIZE),
       }
     }
   }
 
-  const tint = sanitizeTint(raw['tint'])
-  if (tint) piece.tint = tint
-
   const squashes = sanitizeSquashes(raw['squashes'])
-  if (squashes.length) piece.squashes = squashes
+  if (squashes.length) node.squashes = squashes
 
   const cuts = sanitizeCuts(raw['cuts'])
-  if (cuts.length) piece.cuts = cuts
+  if (cuts.length) node.cuts = cuts
 
-  return piece
+  return node
 }
 
 function sanitizeSquashes(input: unknown): Squash[] {

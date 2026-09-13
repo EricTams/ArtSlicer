@@ -1,4 +1,4 @@
-import type { Placed } from '../shared/scene'
+import type { SceneNode } from '../shared/scene'
 
 /**
  * The selected piece's transform handle.
@@ -18,7 +18,7 @@ const MAX_DISTANCE = 320
 export const HANDLE_HIT_RADIUS = 95
 export const HANDLE_DRAW_RADIUS = 34
 
-export function handlePosition(piece: Placed): { x: number; y: number } {
+export function handlePosition(piece: SceneNode): { x: number; y: number } {
   // Sits outside the piece and rides its rotation, so turning it is visibly
   // the handle swinging around rather than the piece drifting.
   const distance = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, REST_DISTANCE * piece.scale))
@@ -30,7 +30,7 @@ export function handlePosition(piece: Placed): { x: number; y: number } {
   }
 }
 
-export function isOnHandle(piece: Placed, x: number, y: number): boolean {
+export function isOnHandle(piece: SceneNode, x: number, y: number): boolean {
   const handle = handlePosition(piece)
   return Math.hypot(x - handle.x, y - handle.y) <= HANDLE_HIT_RADIUS
 }

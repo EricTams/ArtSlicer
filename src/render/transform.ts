@@ -1,4 +1,4 @@
-import type { Placed, Squash } from '../shared/scene'
+import type { Squash, Transformed } from '../shared/scene'
 import type { Point } from './clip'
 
 /**
@@ -70,7 +70,7 @@ export function squashMatrix(squash: Squash): Matrix {
  * (newest outermost, matching how the renderer nests them), then the uniform
  * scale and flip, then the piece's angle.
  */
-export function pieceMatrix(piece: Placed, rotationOverride?: number): Matrix {
+export function pieceMatrix(piece: Transformed, rotationOverride?: number): Matrix {
   let m: Matrix = IDENTITY
 
   // The renderer nests later squashes further out, so they are applied last.
