@@ -171,15 +171,6 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
           )}
         </div>
 
-        {/* Both rows stay mounted whatever is selected. Swapping the tools for
-            the hint changes the column's height, and the canvas is the flexible
-            track above it, so it would resize under the player mid-gesture. */}
-        <p className="make__hint">
-          {scene.pieces.length === 0
-            ? 'Open the parts bin to grab something.'
-            : 'Drag to move · tap a piece for tools · drag its dot to size and turn'}
-        </p>
-
         {toolsOpen && selected && (
           <div className="tray" role="group" aria-label="Tools">
             <div className="tray__head">

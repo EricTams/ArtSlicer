@@ -671,14 +671,6 @@ h3 {
   pointer-events: none;
 }
 
-.make__hint {
-  margin: 0;
-  text-align: center;
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  min-height: 2.4em;
-}
-
 /* Wraps rather than squeezing: six controls across a phone would leave targets
    too narrow to hit, and the row wraps to a fixed number of lines for a given
    width, so the canvas above it still cannot resize mid-gesture. */
