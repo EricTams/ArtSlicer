@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Editor } from '../editor/Editor'
 import { Countdown } from '../shared/Countdown'
+import { autoSubmitDelay } from './autoSubmit'
 import type { Scene } from '../shared/scene'
 
 interface Props {
@@ -28,6 +29,8 @@ export function BuildScreen({
   // re-rendering this screen for each one would fight the canvas.
   const sceneRef = useRef<Scene>({ pieces: [] })
   const [sent, setSent] = useState(false)
+  /** Which deadline has already been auto-sent for. */
+  const autoSentFor = useRef<number | null>(null)
 
   const handleChange = useCallback((scene: Scene) => {
     sceneRef.current = scene
@@ -37,6 +40,32 @@ export function BuildScreen({
     setSent(true)
     onSubmit(sceneRef.current)
   }, [onSubmit])
+
+  /**
+   * Nobody should lose a picture to forgetting the button. The round ends on
+   * the host's clock, so the local one is only usable through the offset the
+   * ping keeps measuring.
+   *
+   * Guarded per deadline rather than with a flag: that offset lands again on
+   * every pong, and without it each arrival would re-run this with the time
+   * already past and fire a submission every three seconds. A deadline that
+   * genuinely moves — the host absorbing a suspension — is a different one,
+   * and earns a fresh send at the new time.
+   */
+  useEffect(() => {
+    if (deadline === null || autoSentFor.current === deadline) return
+
+    const timer = setTimeout(() => {
+      autoSentFor.current = deadline
+      // An untouched canvas is not work anyone is about to lose, and a blank
+      // entry on the ballot is worse than no entry at all.
+      if (sceneRef.current.pieces.length === 0) return
+      setSent(true)
+      onSubmit(sceneRef.current)
+    }, autoSubmitDelay(deadline, clockOffset, Date.now()))
+
+    return () => clearTimeout(timer)
+  }, [deadline, clockOffset, onSubmit])
 
   return (
     <div className="build">
