@@ -4,7 +4,7 @@ import { PlayerFlow } from '../client/PlayerFlow'
 import { loadIdentity } from '../client/identity'
 import { usePiecesLoaded } from '../editor/usePiecesLoaded'
 import { DebugPanel } from '../net/DebugPanel'
-import type { ClientHandlers } from '../net/transport'
+import type { ClientHandlers, ConnectionFailure } from '../net/transport'
 import { describeFailure } from '../net/transport'
 import type { HostRoom } from '../game/hostRoom'
 import { JoinPanel, Lobby } from './Lobby'
@@ -49,6 +49,8 @@ function HostScreens() {
   // The host re-renders the scenes phones submit, so it needs the same sprites.
   const piecesLoaded = usePiecesLoaded()
 
+  // A room that is open and in trouble keeps its screen; see TroubleBanner.
+  const screen = (): React.ReactNode => {
   if (status === 'failed' && failure) {
     return (
       <div className="screen screen--center">
@@ -106,6 +108,29 @@ function HostScreens() {
     case 'lobby':
       return <Lobby state={state} onPlayHere={() => setPlayHere(true)} playing={false} />
   }
+  }
+
+  return (
+    <>
+      {status === 'ready' && failure && <TroubleBanner failure={failure} />}
+      {screen()}
+    </>
+  )
+}
+
+/**
+ * Trouble on a room that is already open.
+ *
+ * It rides over the game instead of replacing it. The transport is retrying
+ * by the time this renders, and a broker that blinks would otherwise pull the
+ * one screen the whole room is playing to out from under them mid-round.
+ */
+function TroubleBanner({ failure }: { failure: ConnectionFailure }) {
+  return (
+    <div className="hosttrouble" role="status">
+      {describeFailure(failure)}
+    </div>
+  )
 }
 
 /**

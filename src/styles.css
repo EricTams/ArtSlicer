@@ -1472,3 +1472,28 @@ h3 {
 .debug__line--bad {
   color: var(--accent);
 }
+
+/* ---------- host trouble banner ---------- */
+
+/*
+ * Sits over the room rather than in its layout: every host screen sizes itself
+ * to the viewport, and taking a strip off the top would reflow the canvas
+ * everyone is looking at just as the connection wobbles.
+ */
+.hosttrouble {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  max-width: min(560px, calc(100vw - 20px));
+  padding: 8px 16px;
+  border: 1px solid var(--warn);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: var(--warn);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 4px 18px rgb(0 0 0 / 45%);
+}

@@ -38,7 +38,12 @@ export function useHostRoom(): HostRoomHandle {
       },
       onFailure: (next) => {
         setFailure(next)
-        setStatus('failed')
+        // Only a room that never opened is a dead end the player has to act
+        // on. Once phones have a code to dial, trouble belongs to the
+        // transport — which retries on its own — and swapping a live game for
+        // an error page would take the screen away from everyone playing to
+        // it over a blip that fixes itself in a second.
+        setStatus((prev) => (prev === 'ready' ? prev : 'failed'))
       },
     })
     setRoom(created)
