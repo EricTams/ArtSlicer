@@ -31,7 +31,14 @@ jobs:
 
       - run: npm test
 
+      # Unset secrets arrive as empty strings, which the build reads as
+      # "no relay" and ships a STUN-only bundle — the same thing it shipped
+      # before TURN was configurable at all.
       - run: npm run build
+        env:
+          VITE_TURN_URLS: ${{ secrets.TURN_URLS }}
+          VITE_TURN_USERNAME: ${{ secrets.TURN_USERNAME }}
+          VITE_TURN_CREDENTIAL: ${{ secrets.TURN_CREDENTIAL }}
 
       - uses: actions/upload-pages-artifact@v5
         with:
