@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { PlayerFlow } from '../client/PlayerFlow'
 import { loadIdentity } from '../client/identity'
@@ -7,6 +7,7 @@ import { DebugPanel } from '../net/DebugPanel'
 import type { ClientHandlers, ConnectionFailure } from '../net/transport'
 import { describeFailure } from '../net/transport'
 import type { HostRoom } from '../game/hostRoom'
+import { clearRoom } from '../game/persistence'
 import { JoinPanel, Lobby } from './Lobby'
 import { BuildingScreen, FinalScreen, ResultsScreen, VotingScreen } from './RoundScreens'
 import { useBigScreen } from './useBigScreen'
@@ -22,8 +23,50 @@ export function HostApp() {
   return (
     <>
       <HostScreens />
+      <NewGame />
       <DebugPanel />
     </>
+  )
+}
+
+/**
+ * A way out, on every screen.
+ *
+ * The host picks an interrupted game back up by itself, which is right when
+ * the tab was refreshed mid-round and wrong when somebody has sat down to play
+ * a new one. Without this the only way past a resumed game is to go and clear
+ * the browser's storage by hand.
+ *
+ * Two taps. This ends a game a room full of people may be in the middle of,
+ * and it sits in a corner where a thumb goes to steady the phone. The arming
+ * lapses on its own so a stray touch does not leave it primed.
+ */
+function NewGame() {
+  const [armed, setArmed] = useState(false)
+
+  useEffect(() => {
+    if (!armed) return
+    const timer = setTimeout(() => setArmed(false), 4000)
+    return () => clearTimeout(timer)
+  }, [armed])
+
+  return (
+    <button
+      type="button"
+      className={`newgame${armed ? ' newgame--armed' : ''}`}
+      aria-label={armed ? 'Confirm starting a new game' : 'Start a new game'}
+      onClick={() => {
+        if (!armed) {
+          setArmed(true)
+          return
+        }
+        // Forget the interrupted game first, or the reload resumes it again.
+        clearRoom()
+        window.location.reload()
+      }}
+    >
+      {armed ? 'Start over?' : 'New game'}
+    </button>
   )
 }
 

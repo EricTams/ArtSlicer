@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BUILD_MS, type RoomState, createRoom } from '../shared/gameState'
-import { clearRoom, loadRoom, saveRoom } from './persistence'
+import { clearRoom, loadRoom, saveRoom, touchRoom } from './persistence'
 
 /** Minimal localStorage so these pure functions can be tested without a DOM. */
 function installStorage() {
@@ -84,20 +84,59 @@ describe('loadRoom', () => {
     const state = { ...midGame(), deadline: 1_000_000 + 60_000 }
     saveRoom(state)
 
-    // The host was away for five minutes — far past the original deadline.
-    vi.setSystemTime(1_000_000 + 5 * 60_000)
+    // The host was away well past the original deadline, but not so long that
+    // the game counts as abandoned.
+    vi.setSystemTime(1_000_000 + 90_000)
     const restored = loadRoom()!
 
     // The round resumes with the time that was left, not already expired.
     expect(restored.deadline).toBe(Date.now() + 60_000)
   })
 
-  it('ignores a save that is too old to be an interrupted game', () => {
+  it('ignores a save the host has been away from too long to be resuming', () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_000_000)
     saveRoom(midGame())
 
-    vi.setSystemTime(1_000_000 + 31 * 60 * 1000)
+    vi.setSystemTime(1_000_000 + 2 * 60_000 + 1)
+    expect(loadRoom()).toBeNull()
+  })
+
+  it('still resumes a game the host only just left', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    saveRoom(midGame())
+
+    vi.setSystemTime(1_000_000 + 20_000)
+    expect(loadRoom()).not.toBeNull()
+  })
+
+  it('counts absence from the host, not from the last thing that happened', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    saveRoom(midGame())
+
+    // A build phase where nobody submits writes no snapshot for minutes, but
+    // the host is sitting there the whole time saying so.
+    for (let at = 5_000; at <= 200_000; at += 5_000) {
+      vi.setSystemTime(1_000_000 + at)
+      touchRoom()
+    }
+
+    // Refreshed straight after: the game is still there to come back to.
+    vi.setSystemTime(1_000_000 + 202_000)
+    expect(loadRoom()).not.toBeNull()
+  })
+
+  it('gives up once the heartbeat stops, however long the game itself ran', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    saveRoom(midGame())
+    vi.setSystemTime(1_000_000 + 200_000)
+    touchRoom()
+
+    // Host closed. Two minutes past its last beat, there is nothing to rejoin.
+    vi.setSystemTime(1_000_000 + 200_000 + 2 * 60_000 + 1)
     expect(loadRoom()).toBeNull()
   })
 
@@ -116,5 +155,12 @@ describe('clearRoom', () => {
     saveRoom(midGame())
     clearRoom()
     expect(loadRoom()).toBeNull()
+  })
+
+  it('takes the heartbeat with it, so it cannot outlive the game it vouched for', () => {
+    saveRoom(midGame())
+    touchRoom()
+    clearRoom()
+    expect(localStorage.getItem('artslicer.host.alive')).toBeNull()
   })
 })

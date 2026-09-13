@@ -17,7 +17,7 @@ import {
 import { type PlayerId, type RoomState, createRoom, publicPlayers } from '../shared/gameState'
 import { randomUUID } from '../shared/randomId'
 import { sanitizeScene } from '../shared/scene'
-import { loadRoom, saveRoom } from './persistence'
+import { loadRoom, saveRoom, touchRoom } from './persistence'
 import { ballotFor, canStart, reduce } from './reducer'
 import { tallyRound } from './scoring'
 
@@ -29,6 +29,14 @@ export interface HostRoomHandlers {
 
 /** How often the host checks whether the current phase has run out of time. */
 const TICK_MS = 250
+
+/**
+ * How often to record that the host is still here. Frequent enough that the
+ * two-minute absence test is answering about the host rather than about the
+ * last thing that happened in the game, rare enough not to touch storage on
+ * every tick.
+ */
+const ALIVE_EVERY_MS = 5_000
 
 /**
  * A tick this far behind schedule means the tab was suspended rather than
@@ -281,10 +289,20 @@ export function createHostRoom(handlers: HostRoomHandlers) {
   // Time only moves forward here. Phases also end early when everyone is done,
   // which the reducer handles on the triggering event itself.
   let lastTick = Date.now()
+  let lastBeat = 0
   const timer = setInterval(() => {
     const now = Date.now()
     const gap = now - lastTick
     lastTick = now
+
+    // Only while there is a game to come back to; saveRoom clears the snapshot
+    // in the lobby and at the final scores, and a heartbeat without one would
+    // outlive it.
+    const resumable = state.phase !== 'lobby' && state.phase !== 'finalResults'
+    if (resumable && now - lastBeat >= ALIVE_EVERY_MS) {
+      lastBeat = now
+      touchRoom()
+    }
 
     // A gap far larger than the interval means this tab was suspended — the
     // host backgrounded the page or the laptop slept. Timers stop, but

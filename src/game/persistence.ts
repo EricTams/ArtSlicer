@@ -1,12 +1,14 @@
 import { RECOVERY_GRACE_MS, type RoomState } from '../shared/gameState'
 
 const STORAGE_KEY = 'artslicer.host'
+const ALIVE_KEY = 'artslicer.host.alive'
 
 /**
- * A game older than this is assumed abandoned rather than interrupted — the
- * laptop was closed and reopened later, not refreshed mid-round.
+ * How long the host can be away before its game is over rather than
+ * interrupted. A refresh or a crash is back within seconds; someone coming
+ * back after this has gone to start a new game, not to rejoin the old one.
  */
-const MAX_AGE_MS = 30 * 60 * 1000
+const MAX_ABSENCE_MS = 2 * 60 * 1000
 
 interface Saved {
   savedAt: number
@@ -17,6 +19,24 @@ interface Saved {
    */
   remainingMs: number | null
   state: RoomState
+}
+
+/**
+ * Marks the host as still running.
+ *
+ * The snapshot is only written when the state actually changes, and a build
+ * phase can pass two and a half minutes without one — nobody submitting is a
+ * room where nothing happens. Judging absence by the snapshot's own age would
+ * read a quiet round as an abandoned game and throw it away on the next
+ * refresh. This is the separate, cheap answer to "was the host here a moment
+ * ago", which is the question actually being asked.
+ */
+export function touchRoom(): void {
+  try {
+    localStorage.setItem(ALIVE_KEY, String(Date.now()))
+  } catch {
+    // Storage unavailable: absence falls back to the snapshot's own age.
+  }
 }
 
 /**
@@ -51,7 +71,11 @@ export function loadRoom(): RoomState | null {
 
     const saved = JSON.parse(raw) as Partial<Saved>
     if (typeof saved.savedAt !== 'number' || !saved.state?.roomCode) return null
-    if (Date.now() - saved.savedAt > MAX_AGE_MS) {
+
+    // How long the host has been gone, not how long since the game last moved.
+    const beat = Number(localStorage.getItem(ALIVE_KEY))
+    const lastAlive = Number.isFinite(beat) && beat > 0 ? Math.max(beat, saved.savedAt) : saved.savedAt
+    if (Date.now() - lastAlive > MAX_ABSENCE_MS) {
       clearRoom()
       return null
     }
@@ -77,6 +101,7 @@ export function loadRoom(): RoomState | null {
 export function clearRoom(): void {
   try {
     localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(ALIVE_KEY)
   } catch {
     // Nothing to do — a stale entry simply expires on age.
   }

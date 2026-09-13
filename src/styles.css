@@ -1588,3 +1588,35 @@ h3 {
   text-align: center;
   box-shadow: 0 4px 18px rgb(0 0 0 / 45%);
 }
+
+/* ---------- host: start a new game ---------- */
+
+/*
+ * Mirrors the debug button into the other corner: reachable from every host
+ * screen without taking a place in any of their layouts, and quiet enough that
+ * it is not competing with the game for attention.
+ */
+.newgame {
+  position: fixed;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 40;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: var(--text-dim);
+  opacity: 0.45;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Armed: no longer quiet, because the next tap ends the game. */
+.newgame--armed {
+  border-color: var(--accent);
+  color: var(--accent);
+  opacity: 1;
+}
