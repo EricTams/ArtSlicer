@@ -799,6 +799,12 @@ h3 {
   flex: 1;
 }
 
+/* Sized to its label so "Parts bin" keeps the room it needs to stay on one
+   line on a narrow phone. */
+.make__toolsbtn {
+  flex: none;
+}
+
 /* ---------- parts tray (drawer over the bottom buttons) ---------- */
 
 /* Anchored over the layout, never part of it: taking a row would shrink the

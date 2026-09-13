@@ -53,9 +53,25 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [screen, setScreen] = useState<Screen>('canvas')
   const [trayOpen, setTrayOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
   // Mixed paint outlives the tool, so colouring several pieces the same shade
   // doesn't mean mixing it again each time.
   const [jar, setJar] = useState<Jar>(EMPTY_JAR)
+
+  /*
+   * Every tool in the drawer needs a selection, so losing one empties it.
+   * Closing it outright rather than hiding it keeps the next tap on a piece
+   * from popping a drawer the player did not ask for.
+   */
+  useEffect(() => {
+    if (!selectedId) setToolsOpen(false)
+  }, [selectedId])
+
+  /** Colour, Squish and Slice each take over the screen; the drawer goes. */
+  const openTool = useCallback((next: Screen) => {
+    setToolsOpen(false)
+    setScreen(next)
+  }, [])
 
   const scene = history.present
   const selected = scene.pieces.find((piece) => piece.id === selectedId) ?? null
@@ -164,24 +180,37 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
             : 'Drag to move · tap a piece for tools · drag its dot to size and turn'}
         </p>
 
-        <div className="make__tools">
+        {toolsOpen && selected && (
+          <div className="tray" role="group" aria-label="Tools">
+            <div className="tray__head">
+              <span className="tray__title">Tools</span>
+              <button
+                type="button"
+                className="tray__close"
+                onClick={() => setToolsOpen(false)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="make__tools">
           <ToolButton
             glyph="🎨"
             label="Colour"
             disabled={!selected}
-            onClick={() => setScreen('colour')}
+            onClick={() => openTool('colour')}
           />
           <ToolButton
             glyph="🗜️"
             label="Squish"
             disabled={!selected}
-            onClick={() => setScreen('squish')}
+            onClick={() => openTool('squish')}
           />
           <ToolButton
             glyph="🔪"
             label="Slice"
             disabled={!selected}
-            onClick={() => setScreen('slice')}
+            onClick={() => openTool('slice')}
           />
           {/* Both pairs act on the picture straight away rather than opening a
               tool: one press, one step. */}
@@ -223,7 +252,9 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
               setSelectedId(null)
             }}
           />
-        </div>
+            </div>
+          </div>
+        )}
 
         <div className="make__bottom">
           <button
@@ -235,11 +266,28 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
           >
             ↶
           </button>
+          {/* Every tool needs a selection, so this says so rather than opening
+              a drawer of six dead buttons. The hint above says what to do. */}
+          <button
+            type="button"
+            className="btn make__toolsbtn"
+            aria-expanded={toolsOpen}
+            disabled={!selected}
+            onClick={() => {
+              setTrayOpen(false)
+              setToolsOpen((open) => !open)
+            }}
+          >
+            Tools
+          </button>
           <button
             type="button"
             className="btn make__bin"
             aria-expanded={trayOpen}
-            onClick={() => setTrayOpen((open) => !open)}
+            onClick={() => {
+              setToolsOpen(false)
+              setTrayOpen((open) => !open)
+            }}
           >
             Parts bin{full ? ' (full)' : ''}
           </button>
