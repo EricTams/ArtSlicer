@@ -158,3 +158,40 @@ export function localBox(node: SceneNode): { width: number; height: number } {
   }
   return { width: halfWidth * 2, height: halfHeight * 2 }
 }
+
+
+/** What a tap on a piece means, which depends on whether grouping is armed. */
+export type Tap =
+  | { action: 'select'; id: string }
+  | { action: 'group'; into: string; add: string; comboId: string }
+
+/**
+ * Reads a tap.
+ *
+ * Kept apart from the canvas because the interesting part is not the touch: it
+ * is which id the player is left holding afterwards. Adding to a combo keeps
+ * that combo's id, while two loose pieces make a new one, and getting that
+ * wrong leaves the selection pointing at something that no longer exists.
+ */
+export function readTap(
+  scene: { pieces: SceneNode[] },
+  selectedId: string | null,
+  tappedId: string,
+  freshId: string,
+  grouping: boolean,
+): Tap {
+  // Nothing to join, or joining something to itself.
+  if (!grouping || !selectedId || selectedId === tappedId) {
+    return { action: 'select', id: tappedId }
+  }
+
+  const into = scene.pieces.find((node) => node.id === selectedId)
+  if (!into) return { action: 'select', id: tappedId }
+
+  return {
+    action: 'group',
+    into: selectedId,
+    add: tappedId,
+    comboId: isCombo(into) ? selectedId : freshId,
+  }
+}

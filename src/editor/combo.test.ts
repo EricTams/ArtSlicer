@@ -11,7 +11,16 @@ import {
   isCombo,
   sanitizeScene,
 } from '../shared/scene'
-import { addToCombo, leafCount, leaves, makeCombo, nodeMatrix, worldMatrix } from './combo'
+import {
+  addToCombo,
+  leafCount,
+  leaves,
+  makeCombo,
+  nodeMatrix,
+  readTap,
+  worldMatrix,
+} from './combo'
+import { addPiece, groupPieces, sceneLeafCount } from './sceneEdit'
 
 function piece(over: Partial<Placed> = {}): Placed {
   return { id: 'p', pieceId: 'sock', x: 0, y: 0, scale: 1, rotation: 0, z: 0, ...over }
@@ -276,5 +285,149 @@ describe('a combo in a scene', () => {
     const combo = makeCombo([piece({ id: 'a', pieceId: 'real' }), piece({ id: 'b', pieceId: 'fake' })], 'c')
     const back = sanitizeScene(JSON.parse(JSON.stringify({ pieces: [combo] })), (id) => id === 'real')
     expect(leafCount(back!.pieces[0]!)).toBe(1)
+  })
+})
+
+describe('grouping in a scene', () => {
+  const twoPieces = (): Scene => ({
+    pieces: [
+      { id: 'a', pieceId: 'sock', x: 100, y: 100, scale: 1, rotation: 0.2, z: 0 },
+      { id: 'b', pieceId: 'ball', x: 200, y: 140, scale: 1.5, rotation: 0, z: 1 },
+    ],
+  })
+
+  it('replaces both with one thing', () => {
+    const scene = groupPieces(twoPieces(), 'a', 'b', 'c')
+    expect(scene.pieces).toHaveLength(1)
+    expect(isCombo(scene.pieces[0]!)).toBe(true)
+    expect(leafCount(scene.pieces[0]!)).toBe(2)
+  })
+
+  it('moves neither of them', () => {
+    const before = twoPieces()
+    const after = groupPieces(before, 'a', 'b', 'c')
+    const combo = after.pieces[0] as Combo
+
+    before.pieces.forEach((original, i) => {
+      sameInk(corners(combo.children[i]!, [combo]), corners(original))
+    })
+  })
+
+  it('grows a combo rather than wrapping it again', () => {
+    let scene = groupPieces(twoPieces(), 'a', 'b', 'c')
+    scene = {
+      ...scene,
+      pieces: [...scene.pieces, { id: 'd', pieceId: 'cone', x: 40, y: 40, scale: 1, rotation: 0, z: 2 }],
+    }
+    scene = groupPieces(scene, 'c', 'd', 'c2')
+
+    expect(scene.pieces).toHaveLength(1)
+    const combo = scene.pieces[0] as Combo
+    // Three members of one combo, not a combo holding a combo.
+    expect(combo.children).toHaveLength(3)
+    expect(combo.children.every((child) => !isCombo(child))).toBe(true)
+  })
+
+  it('leaves a piece where it looks when it joins a combo already turned and crushed', () => {
+    let scene = groupPieces(twoPieces(), 'a', 'b', 'c')
+    scene = {
+      ...scene,
+      pieces: scene.pieces.map((node) => ({
+        ...node,
+        rotation: 1.1,
+        scale: 1.7,
+        flipX: true,
+        squashes: [{ angle: 0.6, factor: 2.2 }],
+      })),
+    }
+    const joining: Placed = { id: 'd', pieceId: 'cone', x: 300, y: 90, scale: 0.8, rotation: -0.5, z: 9 }
+    scene = { ...scene, pieces: [...scene.pieces, joining] }
+
+    const before = corners(joining)
+    const grown = groupPieces(scene, 'c', 'd', 'c2')
+    const combo = grown.pieces[0] as Combo
+
+    sameInk(corners(combo.children[combo.children.length - 1]!, [combo]), before)
+  })
+
+  it('does nothing when asked to group something with itself', () => {
+    const scene = twoPieces()
+    expect(groupPieces(scene, 'a', 'a', 'c')).toBe(scene)
+  })
+
+  it('does nothing when either side is not there', () => {
+    const scene = twoPieces()
+    expect(groupPieces(scene, 'a', 'nope', 'c')).toBe(scene)
+    expect(groupPieces(scene, 'nope', 'b', 'c')).toBe(scene)
+  })
+})
+
+describe('the piece limit', () => {
+  it('counts sprites inside combos, not the things sitting at the top', () => {
+    const combo = makeCombo(
+      Array.from({ length: 5 }, (_, i) => piece({ id: `p${i}` })),
+      'c',
+    )
+    expect(sceneLeafCount({ pieces: [combo, piece({ id: 'loose' })] })).toBe(6)
+  })
+
+  it('stops a new piece once the sprites inside combos have filled the picture', () => {
+    const combo = makeCombo(
+      Array.from({ length: MAX_PIECES }, (_, i) => piece({ id: `p${i}` })),
+      'c',
+    )
+    const full: Scene = { pieces: [combo] }
+    // One top-level node, but no room at all.
+    expect(addPiece(full, 'sock', 'new').pieces).toHaveLength(1)
+  })
+})
+
+describe('reading a tap', () => {
+  const scene = (): Scene => ({
+    pieces: [
+      { id: 'a', pieceId: 'sock', x: 0, y: 0, scale: 1, rotation: 0, z: 0 },
+      { id: 'b', pieceId: 'ball', x: 50, y: 0, scale: 1, rotation: 0, z: 1 },
+    ],
+  })
+
+  it('just selects when grouping is not armed', () => {
+    expect(readTap(scene(), 'a', 'b', 'fresh', false)).toEqual({ action: 'select', id: 'b' })
+  })
+
+  it('joins the tapped piece to the held one when it is', () => {
+    expect(readTap(scene(), 'a', 'b', 'fresh', true)).toEqual({
+      action: 'group',
+      into: 'a',
+      add: 'b',
+      comboId: 'fresh',
+    })
+  })
+
+  it('keeps the combo’s own id when adding to one, not the new one', () => {
+    // Otherwise the selection is left pointing at something that never existed.
+    const withCombo: Scene = {
+      pieces: [
+        makeCombo([piece({ id: 'a' }), piece({ id: 'b' })], 'c'),
+        piece({ id: 'd', x: 90 }),
+      ],
+    }
+    expect(readTap(withCombo, 'c', 'd', 'fresh', true)).toEqual({
+      action: 'group',
+      into: 'c',
+      add: 'd',
+      comboId: 'c',
+    })
+  })
+
+  it('selects rather than grouping a piece with itself', () => {
+    expect(readTap(scene(), 'a', 'a', 'fresh', true)).toEqual({ action: 'select', id: 'a' })
+  })
+
+  it('selects when nothing is held to group with', () => {
+    expect(readTap(scene(), null, 'b', 'fresh', true)).toEqual({ action: 'select', id: 'b' })
+  })
+
+  it('selects when what was held has since gone', () => {
+    expect(readTap(scene(), 'vanished', 'b', 'fresh', true)).toEqual({ action: 'select', id: 'b' })
   })
 })

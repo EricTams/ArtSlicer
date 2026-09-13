@@ -16,7 +16,7 @@ import {
   type Tint,
   topZ,
 } from '../shared/scene'
-import { localBox } from './combo'
+import { addToCombo, leafCount, localBox, makeCombo } from './combo'
 import { clipPolygon, invertCut, polygonCentroid } from '../render/clip'
 import { apply, pieceMatrix } from '../render/transform'
 
@@ -33,7 +33,7 @@ export function addPiece(
   id: string,
   at?: { x: number; y: number },
 ): Scene {
-  if (scene.pieces.length >= MAX_PIECES) return scene
+  if (sceneLeafCount(scene) >= MAX_PIECES) return scene
 
   const piece: Placed = {
     id,
@@ -290,7 +290,8 @@ export function splitPiece(
   // Out of cuts, or no room for the second half: leave the piece whole rather
   // than half-applying the slice.
   if (existing.length >= MAX_CUTS_PER_PIECE) return scene
-  if (scene.pieces.length >= MAX_PIECES) return scene
+  // Slicing a combo copies everything in it, so the cost is what it holds.
+  if (sceneLeafCount(scene) + leafCount(piece) > MAX_PIECES) return scene
 
   // Enough that the two halves visibly separate — otherwise a clean cut looks
   // like nothing happened — without flinging them apart.
@@ -383,4 +384,31 @@ export function undo(history: History): History {
 
 export function canUndo(history: History): boolean {
   return history.past.length > 0
+}
+
+
+/**
+ * Makes one thing out of two.
+ *
+ * Adding to something that is already a combo grows it rather than wrapping it
+ * again: "keep adding parts" should build one object, not a stack of shells
+ * each holding the last. Wrapping only happens when there is nothing to grow.
+ *
+ * The new member takes the combo's z, since a combo is drawn as one and its
+ * parts no longer sit separately in the picture's stacking.
+ */
+export function groupPieces(scene: Scene, intoId: string, addId: string, newId: string): Scene {
+  if (intoId === addId) return scene
+  const into = find(scene, intoId)
+  const adding = find(scene, addId)
+  if (!into || !adding) return scene
+
+  const combo = isCombo(into) ? addToCombo(into, adding) : makeCombo([into, adding], newId)
+  const dropped = scene.pieces.filter((node) => node.id !== intoId && node.id !== addId)
+  return { ...scene, pieces: [...dropped, combo] }
+}
+
+/** Sprites in the whole picture, which is what the piece limit counts. */
+export function sceneLeafCount(scene: Scene): number {
+  return scene.pieces.reduce((sum, node) => sum + leafCount(node), 0)
 }

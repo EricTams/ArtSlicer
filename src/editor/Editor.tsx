@@ -8,6 +8,7 @@ import type { Cut, Scene, SceneNode, Squash } from '../shared/scene'
 import { MAX_CUTS_PER_PIECE, MAX_PIECES, emptyScene } from '../shared/scene'
 import { PartsTray } from './PartsTray'
 import { randomUUID } from '../shared/randomId'
+import { readTap } from './combo'
 import { isOverCanvas, toScene } from './canvasCoords'
 import { EMPTY_JAR, type Jar } from './paint'
 import {
@@ -17,10 +18,12 @@ import {
   canRestack,
   canUndo,
   flipPiece,
+  groupPieces,
   movePiece,
   pushHistory,
   removePiece,
   restackPiece,
+  sceneLeafCount,
   splitPiece,
   sprayPiece,
   transformPiece,
@@ -61,6 +64,11 @@ export function Editor({ initialScene, prompt, onChange, action }: Props) {
   const [screen, setScreen] = useState<Screen>('canvas')
   const [trayOpen, setTrayOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
+  /**
+   * Waiting for the second piece. Grouping needs two, and the canvas only ever
+   * has one selection, so the tool arms and the next tap says what joins.
+   */
+  const [grouping, setGrouping] = useState(false)
   // Mixed paint outlives the tool, so colouring several pieces the same shade
   // doesn't mean mixing it again each time.
   const [jar, setJar] = useState<Jar>(EMPTY_JAR)
@@ -114,8 +122,26 @@ export function Editor({ initialScene, prompt, onChange, action }: Props) {
         (id, scale, rotation) => live(transformPiece(sceneRef.current, id, scale, rotation)),
         [live],
       ),
-      onTap: useCallback((id: string) => setSelectedId(id), []),
-      onTapEmpty: useCallback(() => setSelectedId(null), []),
+      onTap: useCallback(
+        (id: string) => {
+          const fresh = randomUUID().slice(0, 8)
+          const tap = readTap(sceneRef.current, selectedRef.current?.id ?? null, id, fresh, grouping)
+
+          setGrouping(false)
+          if (tap.action === 'group') {
+            commit(groupPieces(sceneRef.current, tap.into, tap.add, fresh))
+            // The combo is what is in hand now, so the next thing acts on it.
+            setSelectedId(tap.comboId)
+            return
+          }
+          setSelectedId(tap.id)
+        },
+        [grouping, commit],
+      ),
+      onTapEmpty: useCallback(() => {
+        setGrouping(false)
+        setSelectedId(null)
+      }, []),
       onDragOut: useCallback(
         (id: string, origin: { x: number; y: number }) => {
           // Put the piece back where the drag started before binning it. The
@@ -131,7 +157,7 @@ export function Editor({ initialScene, prompt, onChange, action }: Props) {
     },
   )
 
-  const full = scene.pieces.length >= MAX_PIECES
+  const full = sceneLeafCount(scene) >= MAX_PIECES
 
   const place = useCallback(
     (pieceId: string, at?: { x: number; y: number }) => {
@@ -246,6 +272,15 @@ export function Editor({ initialScene, prompt, onChange, action }: Props) {
               onClick={() => selected && commit(flipPiece(scene, selected.id, 'y'))}
             />
           </PairTool>
+          {/* Two taps by nature: this one arms, and the next piece touched is
+              what joins. Armed, it says so, because nothing else on screen
+              would explain why the next tap behaves differently. */}
+          <ToolButton
+            glyph="🔗"
+            label={grouping ? 'Tap a piece' : 'Group'}
+            disabled={!selected || scene.pieces.length < 2}
+            onClick={() => setGrouping((armed) => !armed)}
+          />
           <ToolButton
             glyph="🗑"
             label="Bin it"
