@@ -50,11 +50,14 @@ export interface Tint {
   amount: number
 }
 
-export interface Placed {
+/**
+ * What every node in a scene has in common: where it sits and how it has been
+ * deformed. A combo carries exactly the same set as a single piece, which is
+ * what lets the tools act on either without knowing which they have.
+ */
+export interface Transformed {
   /** Instance id — a piece can appear many times in one scene. */
   id: string
-  /** Key into the asset manifest. */
-  pieceId: string
   x: number
   y: number
   /** Uniform, set by pinching. Squashing changes shape, never overall size. */
@@ -63,7 +66,6 @@ export interface Placed {
   rotation: number
   flipX?: boolean
   squashes?: Squash[]
-  tint?: Tint
   cuts?: Cut[]
   /**
    * Which point of the sprite the piece's x/y refers to, in sprite-local
@@ -75,6 +77,38 @@ export interface Placed {
    */
   pivot?: { x: number; y: number }
   z: number
+}
+
+export interface Placed extends Transformed {
+  /** Key into the asset manifest. */
+  pieceId: string
+  /**
+   * Paint, which lives on the sprite and never on a combo.
+   *
+   * A combo-level tint would have to reach children that joined after it was
+   * sprayed, and paint cannot be undone the way a turn or a squeeze can — so
+   * a piece added to a sprayed combo could not be left looking as it did.
+   * Spraying a combo paints the children it has at the time.
+   */
+  tint?: Tint
+}
+
+/**
+ * Several nodes made into one thing.
+ *
+ * The combo owns a transform of its own and its children are stored relative
+ * to it, so turning, sizing or crushing the combo moves every child together
+ * and none of their own numbers change. That is what makes it one object
+ * rather than several that happen to travel together.
+ */
+export interface Combo extends Transformed {
+  children: SceneNode[]
+}
+
+export type SceneNode = Placed | Combo
+
+export function isCombo(node: SceneNode): node is Combo {
+  return 'children' in node
 }
 
 export interface Scene {
