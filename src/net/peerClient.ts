@@ -11,9 +11,9 @@ import {
   setFacts,
   upsertPeer,
 } from './diagnostics'
-import { toFailure, watchIce } from './peerHost'
+import { watchIce } from './peerHost'
 import { peerOptions } from './peerOptions'
-import type { ClientHandlers, ClientTransport } from './transport'
+import { type ClientHandlers, type ClientTransport, isRecoverable, toFailure } from './transport'
 
 const BASE_RETRY_MS = 800
 const MAX_RETRY_MS = 8000
@@ -91,7 +91,13 @@ export function createPeerClient(roomCode: string, handlers: ClientHandlers): Cl
       })
 
       watchIce(dc, () => {
-        if (!destroyed) handlers.onFailure({ kind: 'ice-failed' })
+        if (destroyed) return
+        handlers.onFailure({ kind: 'ice-failed' })
+        // PeerJS closes a connection whose ICE failed, and a close schedules
+        // its own retry — but `close()` returns before emitting unless the
+        // connection had opened. A first join that never got that far emits
+        // nothing at all, so without this the phone simply stops here.
+        scheduleRetry()
       })
     })
 
@@ -105,14 +111,10 @@ export function createPeerClient(roomCode: string, handlers: ClientHandlers): Cl
       const failure = toFailure(err)
       setFacts({ lastError: `${err.type ?? 'error'}: ${err.message ?? failure.kind}` })
       logEvent(`Error — ${failure.kind}: ${err.message ?? err.type ?? '?'}`, 'bad')
+      handlers.onFailure(failure)
       // A missing host may just mean the laptop tab is still loading, so keep
       // retrying rather than declaring the room dead on the first miss.
-      if (failure.kind === 'room-not-found' || failure.kind === 'network') {
-        handlers.onFailure(failure)
-        scheduleRetry()
-        return
-      }
-      handlers.onFailure(failure)
+      if (isRecoverable(failure)) scheduleRetry()
     })
   }
 

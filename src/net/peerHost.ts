@@ -15,7 +15,7 @@ import {
 import { peerOptions } from './peerOptions'
 import { revivalFor, survivedSuspend } from './revival'
 import { type ClientMessage, type HostMessage, parseClientMessage } from '../shared/protocol'
-import type { ConnId, ConnectionFailure, HostTransport } from './transport'
+import { type ConnId, type ConnectionFailure, type HostTransport, toFailure } from './transport'
 
 export interface HostHandlers {
   /** The room code was claimed on the broker and phones can now connect. */
@@ -295,18 +295,3 @@ function short(id: ConnId): string {
   return id.slice(-6)
 }
 
-export function toFailure(err: { type?: string; message?: string }): ConnectionFailure {
-  switch (err.type) {
-    case 'peer-unavailable':
-      return { kind: 'room-not-found' }
-    case 'browser-incompatible':
-      return { kind: 'unsupported' }
-    case 'network':
-    case 'server-error':
-    case 'socket-error':
-    case 'socket-closed':
-      return { kind: 'network' }
-    default:
-      return { kind: 'unknown', detail: err.message ?? err.type ?? 'unknown error' }
-  }
-}

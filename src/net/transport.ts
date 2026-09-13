@@ -47,6 +47,51 @@ export type ConnectionFailure =
   | { kind: 'unsupported' }
   | { kind: 'unknown'; detail: string }
 
+/**
+ * PeerJS's error types, in terms the UI can explain.
+ *
+ * `webrtc` and `disconnected` are mapped deliberately rather than left to fall
+ * through: both are the connection breaking rather than anything the player
+ * chose, and both come back on a retry. As `unknown` they were terminal.
+ */
+export function toFailure(err: { type?: string; message?: string }): ConnectionFailure {
+  switch (err.type) {
+    case 'peer-unavailable':
+      return { kind: 'room-not-found' }
+    case 'browser-incompatible':
+      return { kind: 'unsupported' }
+    case 'network':
+    case 'server-error':
+    case 'socket-error':
+    case 'socket-closed':
+    case 'webrtc':
+    case 'disconnected':
+      return { kind: 'network' }
+    default:
+      return { kind: 'unknown', detail: err.message ?? err.type ?? 'unknown error' }
+  }
+}
+
+/**
+ * Whether the transport should keep trying on its own.
+ *
+ * The question is only whether anything could change without the player doing
+ * something about it. A room that is missing may still be claiming its code, a
+ * network drops and comes back, and ICE can fail over one path and succeed
+ * over the next. A browser without WebRTC will not grow it on the second ask.
+ */
+export function isRecoverable(failure: ConnectionFailure): boolean {
+  switch (failure.kind) {
+    case 'room-not-found':
+    case 'network':
+    case 'ice-failed':
+      return true
+    case 'unsupported':
+    case 'unknown':
+      return false
+  }
+}
+
 export function describeFailure(failure: ConnectionFailure): string {
   switch (failure.kind) {
     case 'room-not-found':
@@ -54,9 +99,9 @@ export function describeFailure(failure: ConnectionFailure): string {
       // host tab may simply not have finished claiming its code yet.
       return 'Looking for that room… check the code on the host screen.'
     case 'ice-failed':
-      // The one failure mode this design genuinely cannot fix without a TURN
-      // relay, so say the useful thing rather than "connection failed".
-      return 'Could not reach the host. Make sure your phone is on the same Wi-Fi as the host screen.'
+      // Retried now rather than left sitting, so the copy says so. The Wi-Fi
+      // hint stays: with no relay configured it is still the thing that works.
+      return 'Could not reach the host — trying again. If this keeps up, check you are both on the same Wi-Fi.'
     case 'network':
       return 'Lost the connection. Retrying…'
     case 'unsupported':
