@@ -3,6 +3,7 @@ import { Group, Image as KonvaImage } from 'react-konva'
 
 import type { Placed, SceneNode, Squash } from '../shared/scene'
 import { isCombo } from '../shared/scene'
+import { localBox } from '../editor/combo'
 import { clipPolygon } from './clip'
 import { getImage, getPiece } from './pieces'
 import { tinted } from './tint'
@@ -59,6 +60,19 @@ export function SceneNodeView({
   const squashes = [...(node.squashes ?? []), ...(extraSquashes ?? [])]
   const rotation = overrideRotation ?? node.rotation
 
+  /*
+   * A slice on a combo cuts the whole thing at once, so the clip goes on the
+   * group its children are drawn in rather than on each of them. The box comes
+   * from what is inside, since a combo has no sprite of its own to measure,
+   * and it is the same box splitPiece cut against — both sit in the space the
+   * children are positioned in.
+   */
+  const box = localBox(node)
+  const clip = clipPolygon(box.width, box.height, node.cuts)
+  // Every cut removed the combo entirely.
+  if (clip.length === 0) return null
+  const hasCuts = Boolean(node.cuts?.length)
+
   return (
     <Group
       id={node.id}
@@ -75,7 +89,22 @@ export function SceneNodeView({
       onDragEnd={(e) => onDragEnd?.(node.id, e.target.x(), e.target.y())}
     >
       <Squashed squashes={squashes}>
-        <Group x={-(node.pivot?.x ?? 0)} y={-(node.pivot?.y ?? 0)}>
+        <Group
+          x={-(node.pivot?.x ?? 0)}
+          y={-(node.pivot?.y ?? 0)}
+          // Same frame as the children's own coordinates, so the group's shift
+          // carries the clip and what it clips together.
+          clipFunc={
+            hasCuts
+              ? (ctx) => {
+                  ctx.beginPath()
+                  ctx.moveTo(clip[0]!.x, clip[0]!.y)
+                  for (let i = 1; i < clip.length; i++) ctx.lineTo(clip[i]!.x, clip[i]!.y)
+                  ctx.closePath()
+                }
+              : undefined
+          }
+        >
           {/* Children are drawn back to front among themselves; the combo as a
               whole sits at its own z among everything else. */}
           {[...node.children]
