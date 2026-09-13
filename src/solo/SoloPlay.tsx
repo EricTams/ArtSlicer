@@ -43,12 +43,16 @@ export function SoloPlay() {
       <div className="build__editor">
         {/* Keyed on the round so a new prompt clears the picture and hands you
             a fresh set of parts, rather than editing the last one. */}
-        <Editor key={round} prompt={prompt} />
+        <Editor
+          key={round}
+          prompt={prompt}
+          action={
+            <button className="btn make__action" onClick={nextPrompt}>
+              New prompt
+            </button>
+          }
+        />
       </div>
-
-      <button className="btn btn--wide" onClick={nextPrompt}>
-        New prompt
-      </button>
     </div>
   )
 }

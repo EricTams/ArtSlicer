@@ -788,8 +788,12 @@ h3 {
   font-weight: 700;
 }
 
+/* Wraps on a narrow screen rather than squeezing "Parts bin" onto two lines of
+   text. Like the tool grid, it wraps to a fixed number of lines for a given
+   width, so the picture above it still cannot resize mid-gesture. */
 .make__bottom {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -800,14 +804,61 @@ h3 {
   padding: 0;
 }
 
-.make__bin {
-  flex: 1;
+/* The parts bin and the screen's own action share what the undo button and
+   the tools button leave, and take a line each when that is not enough. */
+.make__bin,
+.make__action {
+  flex: 1 1 120px;
 }
 
 /* Sized to its label so "Parts bin" keeps the room it needs to stay on one
    line on a narrow phone. */
 .make__toolsbtn {
   flex: none;
+}
+
+/*
+ * The tools are a drawer only where the screen cannot afford them.
+ *
+ * Compounded with .tray throughout: these carry the same specificity as the
+ * .tray rules they override and are declared earlier in the file, so without
+ * the extra class they lose every one of these properties on order alone.
+ *
+ * Short screens: hidden over the picture until asked for. The picture is
+ * square, so on an iPod touch it is already capped by the width and a row of
+ * tools underneath would come straight off it.
+ */
+.tray.make__toolbox {
+  display: none;
+}
+
+.tray.make__toolbox--open {
+  display: flex;
+}
+
+/*
+ * Tall enough to keep them in the column: the picture is still capped by the
+ * width, so the row below costs it nothing and saves a tap per tool. 640px
+ * clears an iPod touch even with its toolbars hidden (568) and sits under a
+ * 13 mini (693), which is the gap these two behaviours belong either side of.
+ */
+@media (min-height: 640px) {
+  .tray.make__toolbox {
+    display: flex;
+    position: static;
+    z-index: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  /* No drawer, so nothing to title or close, and nothing to open it with. */
+  .tray__head.make__toolbox-head,
+  .make__toolsbtn {
+    display: none;
+  }
 }
 
 /* ---------- parts tray (drawer over the bottom buttons) ---------- */

@@ -36,6 +36,13 @@ interface Props {
   /** Shown inset in the picture's own corner, so it stays with what you're making. */
   prompt?: string
   onChange?(scene: Scene): void
+  /**
+   * The screen's own action, sat in the row beside the parts bin rather than
+   * given a line of its own. A whole row for one button is a row the picture
+   * does not get, and on a short screen that is the difference the picture
+   * notices most.
+   */
+  action?: ReactNode
 }
 
 type Screen = 'canvas' | 'colour' | 'squish' | 'slice'
@@ -45,7 +52,7 @@ type Screen = 'canvas' | 'colour' | 'squish' | 'slice'
  * to a piece happens in its own full-screen tool, so each one can stay a
  * single physical action instead of a panel of controls.
  */
-export function Editor({ initialScene, prompt, onChange }: Props) {
+export function Editor({ initialScene, prompt, onChange, action }: Props) {
   const [history, setHistory] = useState<History>(() => ({
     past: [],
     present: initialScene ?? emptyScene(),
@@ -171,20 +178,26 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
           )}
         </div>
 
-        {toolsOpen && selected && (
-          <div className="tray" role="group" aria-label="Tools">
-            <div className="tray__head">
-              <span className="tray__title">Tools</span>
-              <button
-                type="button"
-                className="tray__close"
-                onClick={() => setToolsOpen(false)}
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="make__tools">
+        {/* One element in one place; the stylesheet decides whether it is a
+            drawer over the picture or a row under it, because which of those
+            is right depends only on whether the screen has the height. */}
+        <div
+          className={`tray make__toolbox${toolsOpen ? ' make__toolbox--open' : ''}`}
+          role="group"
+          aria-label="Tools"
+        >
+          <div className="tray__head make__toolbox-head">
+            <span className="tray__title">Tools</span>
+            <button
+              type="button"
+              className="tray__close"
+              onClick={() => setToolsOpen(false)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="make__tools">
           <ToolButton
             glyph="🎨"
             label="Colour"
@@ -243,9 +256,8 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
               setSelectedId(null)
             }}
           />
-            </div>
           </div>
-        )}
+        </div>
 
         <div className="make__bottom">
           <button
@@ -282,6 +294,7 @@ export function Editor({ initialScene, prompt, onChange }: Props) {
           >
             Parts bin{full ? ' (full)' : ''}
           </button>
+          {action}
         </div>
 
         {trayOpen && (
