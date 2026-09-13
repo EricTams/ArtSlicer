@@ -366,6 +366,10 @@ h3 {
 .build__editor {
   flex: 1;
   min-height: 0;
+  /* Part of the same chain as .make__canvas: a single flex item left at the
+     `auto` minimum anywhere between here and the stage holds the whole column
+     open at the widest the picture has ever been. */
+  min-width: 0;
   display: flex;
 }
 
@@ -639,13 +643,22 @@ h3 {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-width: 0;
   gap: 4px;
   padding: 2px 2px max(2px, env(safe-area-inset-bottom));
 }
 
 .make__canvas {
   flex: 1;
+  /*
+   * Both axes, or the stage latches the layout open. The stage inside carries
+   * a pixel width measured from this box, so with the default `auto` minimum
+   * this box can never report smaller than the stage it already sized — the
+   * observer never sees the smaller screen and the picture never shrinks back.
+   * Rotating a phone to portrait is enough to trigger it.
+   */
   min-height: 0;
+  min-width: 0;
   display: grid;
   place-items: center;
   /* The canvas owns every gesture inside it; the page must not scroll or zoom. */
