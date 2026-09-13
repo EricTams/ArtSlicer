@@ -263,6 +263,40 @@ describe('a message from a connection holding no seat', () => {
   })
 })
 
+describe('changing name and icon after being seated', () => {
+  it('takes the new ones without giving up the seat or the score', () => {
+    const room = createHostRoom({
+      onStateChange: () => {},
+      onReady: () => {},
+      onFailure: () => {},
+    })
+
+    const guest = phone('c1', 'guest')
+    guest.hello()
+    const before = room.getState().players[0]!
+
+    peer.handlers.onMessage('c1', {
+      t: 'hello',
+      protocol: PROTOCOL_VERSION,
+      build: BUILD_SHA,
+      playerId: 'guest',
+      secret: 's-guest',
+      name: 'Renamed',
+      avatarId: 'unicorn',
+      clientTime: Date.now(),
+    })
+
+    const after = room.getState().players[0]!
+    expect(room.getState().players).toHaveLength(1)
+    expect(after.id).toBe(before.id)
+    expect(after.name).toBe('Renamed')
+    expect(after.avatarId).toBe('unicorn')
+    expect(after.score).toBe(before.score)
+
+    room.destroy()
+  })
+})
+
 describe('a phone on the wrong build', () => {
   it('is turned away rather than seated', () => {
     const room = createHostRoom({

@@ -36,6 +36,12 @@ export function PlayerFlow({
    */
   const returning = Boolean(identity.name) && !shouldRejoinSilently(identity, roomCode)
   const [choosing, setChoosing] = useState(!returning)
+  /**
+   * Reopening the form from the lobby. Being seated is not the same as being
+   * happy with the name — a player auto-seated back into their old one never
+   * saw the choice at all, and anyone can simply change their mind.
+   */
+  const [editing, setEditing] = useState(false)
 
   const me = room.players.find((p) => p.id === room.you)
   const inLobby = Boolean(me)
@@ -107,7 +113,7 @@ export function PlayerFlow({
     )
   }
 
-  if (!inLobby) {
+  if (!inLobby || editing) {
     const trimmed = sanitizeName(name)
     return (
       <div className="screen">
@@ -159,14 +165,37 @@ export function PlayerFlow({
 
         <button
           className="btn btn--wide"
-          disabled={!trimmed || room.status === 'connecting' || submitted}
+          disabled={!trimmed || room.status === 'connecting' || (submitted && !editing)}
           onClick={() => {
             setSubmitted(true)
+            setEditing(false)
+            // The host takes a new name and avatar from a player it already
+            // knows, so this is the same message either way.
             room.join(trimmed, avatarId)
           }}
         >
-          {room.status === 'connecting' ? 'Connecting…' : submitted ? 'Joining…' : 'Join game'}
+          {editing
+            ? 'Save'
+            : room.status === 'connecting'
+              ? 'Connecting…'
+              : submitted
+                ? 'Joining…'
+                : 'Join game'}
         </button>
+
+        {editing && (
+          <button
+            className="btn btn--ghost btn--wide"
+            onClick={() => {
+              // Put back what is actually in play, so leaving changes them not.
+              setName(me?.name ?? identity.name)
+              setAvatarId(me?.avatarId || identity.avatarId || AVATARS[0]!.id)
+              setEditing(false)
+            }}
+          >
+            Cancel
+          </button>
+        )}
       </div>
     )
   }
@@ -192,6 +221,20 @@ export function PlayerFlow({
         <p className="muted">
           You’re in. {connected} player{connected === 1 ? '' : 's'} here.
         </p>
+
+        <button
+          type="button"
+          className="linkbtn"
+          onClick={() => {
+            // Open on what is actually in play rather than whatever was
+            // loaded at startup, which may be a name since changed.
+            setName(me!.name)
+            setAvatarId(me!.avatarId || AVATARS[0]!.id)
+            setEditing(true)
+          }}
+        >
+          Change name or icon
+        </button>
 
         {room.status === 'reconnecting' && <p className="error">Reconnecting…</p>}
 
