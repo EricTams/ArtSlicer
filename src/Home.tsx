@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { APP_VERSION, BUILD_SHA } from './version'
 
 import { isValidRoomCode, normalizeRoomCode } from './shared/roomCode'
 
@@ -62,6 +63,10 @@ export function Home() {
         <p className="muted home__hint">
           Starting a game works best on whatever screen the room can see — a laptop or TV if you
           have one, otherwise your phone.
+        </p>
+
+        <p className="home__version">
+          v{APP_VERSION} <span className="home__build">{BUILD_SHA}</span>
         </p>
       </div>
     </div>

@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+/** Short commit of the build, injected by vite.config.ts. */
+declare const __BUILD_SHA__: string
+
 interface ImportMetaEnv {
   /** Comma-separated TURN URLs. Empty or unset builds run STUN-only. */
   readonly VITE_TURN_URLS?: string

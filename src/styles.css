@@ -1620,3 +1620,22 @@ h3 {
   color: var(--accent);
   opacity: 1;
 }
+
+/* ---------- version stamp ---------- */
+
+/*
+ * Quiet enough to ignore while playing, legible enough to read out over the
+ * phone when somebody is checking whether they have the build you just pushed.
+ */
+.home__version {
+  margin: 4px 0 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.home__build {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.75;
+}
