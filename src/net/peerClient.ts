@@ -2,6 +2,15 @@ import Peer, { type DataConnection } from 'peerjs'
 
 import { roomCodeToPeerId } from '../shared/roomCode'
 import { type ClientMessage, parseHostMessage } from '../shared/protocol'
+import {
+  closePeer,
+  countReceived,
+  countSent,
+  logEvent,
+  resetDiagnostics,
+  setFacts,
+  upsertPeer,
+} from './diagnostics'
 import { toFailure, watchIce } from './peerHost'
 import { peerOptions } from './peerOptions'
 import type { ClientHandlers, ClientTransport } from './transport'
@@ -16,6 +25,10 @@ const MAX_RETRY_MS = 8000
  */
 export function createPeerClient(roomCode: string, handlers: ClientHandlers): ClientTransport {
   const hostId = roomCodeToPeerId(roomCode)
+  resetDiagnostics()
+  setFacts({ role: 'client', roomCode, hostId })
+  logEvent(`Joining room ${roomCode} (peer ${hostId})`)
+
   let peer: Peer | null = null
   let conn: DataConnection | null = null
   let destroyed = false
@@ -29,6 +42,8 @@ export function createPeerClient(roomCode: string, handlers: ClientHandlers): Cl
     // Back off so a host that is genuinely gone isn't hammered by every phone
     // in the room at once.
     const delay = Math.min(BASE_RETRY_MS * 2 ** (attempt - 1), MAX_RETRY_MS)
+    setFacts({ attempt })
+    logEvent(`Retry ${attempt} in ${delay}ms`, 'warn')
     retryTimer = setTimeout(() => {
       retryTimer = null
       connect()
@@ -41,24 +56,37 @@ export function createPeerClient(roomCode: string, handlers: ClientHandlers): Cl
     peer?.destroy()
     const current = new Peer(peerOptions())
     peer = current
+    setFacts({ broker: 'connecting' })
 
-    current.on('open', () => {
+    current.on('open', (id) => {
       if (destroyed) return
+      setFacts({ broker: 'open', myId: id })
+      logEvent(`Broker open, dialling ${hostId}`, 'good')
+
       const dc = current.connect(hostId, { reliable: true })
       conn = dc
+      // The phone has exactly one connection, and it is the host — labelled as
+      // such so the panel reads the same on both sides of the room.
+      upsertPeer(dc.connectionId, { label: `host ${roomCode}`, channel: 'connecting' })
 
       dc.on('open', () => {
         if (destroyed) return
         attempt = 0
+        setFacts({ attempt: 0, lastError: null })
+        upsertPeer(dc.connectionId, { channel: 'open' })
+        logEvent('Connected to host', 'good')
         handlers.onOpen()
       })
 
       dc.on('data', (data) => {
         const message = parseHostMessage(data)
+        countReceived()
         if (message && !destroyed) handlers.onMessage(message)
       })
 
       dc.on('close', () => {
+        closePeer(dc.connectionId)
+        logEvent('Channel closed', 'warn')
         if (!destroyed) scheduleRetry()
       })
 
@@ -67,9 +95,16 @@ export function createPeerClient(roomCode: string, handlers: ClientHandlers): Cl
       })
     })
 
+    // Losing the broker does not drop an established game, but it does stop a
+    // fresh join dead — worth telling apart from the host being gone.
+    current.on('disconnected', () => setFacts({ broker: 'disconnected' }))
+    current.on('close', () => setFacts({ broker: 'closed' }))
+
     current.on('error', (err) => {
       if (destroyed) return
       const failure = toFailure(err)
+      setFacts({ lastError: `${err.type ?? 'error'}: ${err.message ?? failure.kind}` })
+      logEvent(`Error — ${failure.kind}: ${err.message ?? err.type ?? '?'}`, 'bad')
       // A missing host may just mean the laptop tab is still loading, so keep
       // retrying rather than declaring the room dead on the first miss.
       if (failure.kind === 'room-not-found' || failure.kind === 'network') {
@@ -89,6 +124,7 @@ export function createPeerClient(roomCode: string, handlers: ClientHandlers): Cl
    */
   const onVisible = (): void => {
     if (document.visibilityState === 'visible' && !destroyed && !conn?.open) {
+      logEvent('Back in the foreground with no channel — reconnecting')
       attempt = 0
       connect()
     }
@@ -97,10 +133,16 @@ export function createPeerClient(roomCode: string, handlers: ClientHandlers): Cl
 
   return {
     send(message: ClientMessage) {
-      if (conn?.open) conn.send(message)
+      if (conn?.open) {
+        conn.send(message)
+        countSent()
+      }
     },
     destroy() {
       destroyed = true
+      logEvent('Transport torn down')
+      setFacts({ broker: 'closed' })
+      if (conn) closePeer(conn.connectionId)
       document.removeEventListener('visibilitychange', onVisible)
       if (retryTimer) clearTimeout(retryTimer)
       conn?.close()

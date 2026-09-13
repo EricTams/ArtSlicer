@@ -1,6 +1,17 @@
 import Peer, { type DataConnection } from 'peerjs'
 
 import { generateRoomCode, roomCodeToPeerId } from '../shared/roomCode'
+import {
+  closePeer,
+  countReceived,
+  countSent,
+  logEvent,
+  registerSampler,
+  resetDiagnostics,
+  sampleRoute,
+  setFacts,
+  upsertPeer,
+} from './diagnostics'
 import { peerOptions } from './peerOptions'
 import { type ClientMessage, type HostMessage, parseClientMessage } from '../shared/protocol'
 import type { ConnId, ConnectionFailure, HostTransport } from './transport'
@@ -35,6 +46,7 @@ export function createPeerHost(
   preferredCode?: string,
 ): HostTransport & { destroy(): void } {
   const connections = new Map<ConnId, DataConnection>()
+  resetDiagnostics()
   let peer: Peer | null = null
   let destroyed = false
   let attempt = 0
@@ -48,11 +60,16 @@ export function createPeerHost(
     // a fresh one, because every phone in the room is pointed at the old code.
     const resuming = Boolean(preferredCode) && resumeAttempt < RESUME_ATTEMPTS
     const roomCode = resuming ? preferredCode! : generateRoomCode()
-    const current = new Peer(roomCodeToPeerId(roomCode), peerOptions())
+    const hostId = roomCodeToPeerId(roomCode)
+    const current = new Peer(hostId, peerOptions())
     peer = current
+    setFacts({ role: 'host', roomCode, hostId, myId: hostId, broker: 'connecting' })
+    logEvent(`Claiming ${hostId}${resuming ? ' (resuming)' : ''}`)
 
     current.on('open', () => {
       if (destroyed) return
+      setFacts({ broker: 'open', attempt })
+      logEvent(`Room ${roomCode} is open for phones`, 'good')
       handlers.onReady(roomCode)
     })
 
@@ -66,6 +83,8 @@ export function createPeerHost(
 
     current.on('error', (err) => {
       if (destroyed) return
+      setFacts({ lastError: `${err.type ?? 'error'}: ${err.message ?? '?'}` })
+      logEvent(`Error — ${err.type ?? 'error'}: ${err.message ?? '?'}`, 'bad')
 
       if (err.type === 'unavailable-id') {
         // Resuming: the previous tab's peer may not have been released yet, so
@@ -91,6 +110,8 @@ export function createPeerHost(
     current.on('disconnected', () => {
       // Lost the broker (not the peers). Existing games keep working, but new
       // players can't join until signaling is back.
+      setFacts({ broker: 'disconnected' })
+      logEvent('Lost the broker — no new phones can join until it is back', 'warn')
       if (!destroyed) current.reconnect()
     })
   }
@@ -98,13 +119,17 @@ export function createPeerHost(
   function registerConnection(conn: DataConnection): void {
     const id = conn.connectionId
     connections.set(id, conn)
+    upsertPeer(id, { channel: 'connecting' })
 
     conn.on('open', () => {
+      upsertPeer(id, { channel: 'open' })
+      logEvent(`Phone connected (${short(id)}) — ${connections.size} on the line`, 'good')
       if (!destroyed) handlers.onConnect(id)
     })
 
     conn.on('data', (data) => {
       const message = parseClientMessage(data)
+      countReceived()
       // Silently drop malformed frames: a phone on a stale cached bundle
       // should not be able to crash the host everyone else is playing on.
       if (message && !destroyed) handlers.onMessage(id, message)
@@ -112,11 +137,16 @@ export function createPeerHost(
 
     conn.on('close', () => {
       connections.delete(id)
+      closePeer(id)
+      logEvent(`Phone dropped (${short(id)}) — ${connections.size} left`, 'warn')
       if (!destroyed) handlers.onDisconnect(id)
     })
 
-    conn.on('error', () => {
+    conn.on('error', (err) => {
       connections.delete(id)
+      closePeer(id)
+      setFacts({ lastError: `conn ${short(id)}: ${err.message}` })
+      logEvent(`Phone errored (${short(id)}): ${err.message}`, 'bad')
       if (!destroyed) handlers.onDisconnect(id)
     })
 
@@ -130,11 +160,17 @@ export function createPeerHost(
   return {
     send(id, message: HostMessage) {
       const conn = connections.get(id)
-      if (conn?.open) conn.send(message)
+      if (conn?.open) {
+        conn.send(message)
+        countSent()
+      }
     },
     broadcast(message: HostMessage) {
       for (const conn of connections.values()) {
-        if (conn.open) conn.send(message)
+        if (conn.open) {
+          conn.send(message)
+          countSent()
+        }
       }
     },
     disconnect(id) {
@@ -143,6 +179,9 @@ export function createPeerHost(
     },
     destroy() {
       destroyed = true
+      logEvent('Room closed')
+      setFacts({ broker: 'closed' })
+      for (const id of connections.keys()) closePeer(id)
       for (const conn of connections.values()) conn.close()
       connections.clear()
       peer?.destroy()
@@ -154,13 +193,45 @@ export function createPeerHost(
 /**
  * PeerJS reports a dead DataChannel slowly. Watching ICE directly surfaces the
  * no-TURN failure mode fast enough to show a useful message.
+ *
+ * The same listener feeds the debug panel, because ICE is where a join that
+ * "just doesn't work" actually dies, and the state it dies in is the whole
+ * diagnosis: `checking` forever means the two devices never found a path.
  */
 export function watchIce(conn: DataConnection, onFailed: () => void): void {
   const pc = conn.peerConnection as RTCPeerConnection | undefined
   if (!pc) return
+  const id = conn.connectionId
+
+  // The panel asks for the route when somebody opens it; only a live
+  // connection can answer, so each one lends it a sampler while it lasts.
+  const unregister = registerSampler(() => void sampleRoute(pc, id))
+  conn.on('close', unregister)
+
+  upsertPeer(id, { ice: pc.iceConnectionState })
   pc.addEventListener('iceconnectionstatechange', () => {
-    if (pc.iceConnectionState === 'failed') onFailed()
+    const state = pc.iceConnectionState
+    upsertPeer(id, { ice: state })
+    logEvent(`ICE ${state} (${short(id)})`, iceTone(state))
+    // Connected is the moment a candidate pair exists to report.
+    if (state === 'connected' || state === 'completed') void sampleRoute(pc, id)
+    if (state === 'failed') {
+      unregister()
+      onFailed()
+    }
   })
+}
+
+function iceTone(state: RTCIceConnectionState): 'good' | 'warn' | 'bad' | 'info' {
+  if (state === 'connected' || state === 'completed') return 'good'
+  if (state === 'failed') return 'bad'
+  if (state === 'disconnected') return 'warn'
+  return 'info'
+}
+
+/** Connection IDs are long and only their tail distinguishes one phone. */
+function short(id: ConnId): string {
+  return id.slice(-6)
 }
 
 export function toFailure(err: { type?: string; message?: string }): ConnectionFailure {

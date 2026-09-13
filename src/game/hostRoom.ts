@@ -1,3 +1,4 @@
+import { upsertPeer } from '../net/diagnostics'
 import { createPeerHost } from '../net/peerHost'
 import type {
   ClientHandlers,
@@ -161,6 +162,10 @@ export function createHostRoom(handlers: HostRoomHandlers) {
         }
 
         connToPlayer.set(conn, message.playerId)
+        // Name the connection in the debug panel: on a host with five phones
+        // on the line, "Priya" locates a problem and a connection ID does not.
+        const seated = result.state.players.find((player) => player.id === message.playerId)
+        upsertPeer(conn, { label: seated?.name ?? message.playerId })
         sendTo(conn, {
           t: 'welcome',
           you: message.playerId,

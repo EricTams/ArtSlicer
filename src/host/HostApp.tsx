@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react'
 import { PlayerFlow } from '../client/PlayerFlow'
 import { loadIdentity } from '../client/identity'
 import { usePiecesLoaded } from '../editor/usePiecesLoaded'
+import { DebugPanel } from '../net/DebugPanel'
 import type { ClientHandlers } from '../net/transport'
 import { describeFailure } from '../net/transport'
 import type { HostRoom } from '../game/hostRoom'
@@ -13,6 +14,20 @@ import { useHostRoom } from './useHostRoom'
 import { useWakeLock } from './useWakeLock'
 
 /**
+ * The host, with the debug panel over it. Wrapping here rather than inside
+ * each branch keeps the panel reachable on the two screens that need it most:
+ * "opening a room…" that never finishes, and "could not open a room".
+ */
+export function HostApp() {
+  return (
+    <>
+      <HostScreens />
+      <DebugPanel />
+    </>
+  )
+}
+
+/**
  * The host: whichever device opened the room. It is the authoritative server
  * whether that's a laptop being used as a shared screen or one player's phone.
  *
@@ -20,7 +35,7 @@ import { useWakeLock } from './useWakeLock'
  * scoreboard. On a phone it hands the display over to that player's own game,
  * because there is no audience to show anything to.
  */
-export function HostApp() {
+function HostScreens() {
   const { status, state, failure, room } = useHostRoom()
   const bigScreen = useBigScreen()
   // Default: play on this device when hosting from a phone, act as a shared

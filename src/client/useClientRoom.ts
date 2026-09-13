@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { logEvent, setFacts } from '../net/diagnostics'
 import { type ClientTransport, type ConnectFn, describeFailure } from '../net/transport'
 import { type BallotEntry, PROTOCOL_VERSION, type RevealedEntry } from '../shared/protocol'
 import type { Phase, PlayerId, PublicPlayer } from '../shared/gameState'
@@ -105,6 +106,7 @@ export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoo
       onMessage(message) {
         switch (message.t) {
           case 'welcome':
+            logEvent(`Seated as ${message.you}`, 'good')
             setYou(message.you)
             setStatus('joined')
             setProblem(null)
@@ -130,10 +132,15 @@ export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoo
             const roundTrip = now - message.clientTime
             // Assume a symmetric path: the host's clock at "now" is its
             // timestamp plus half the round trip.
-            setClockOffset(message.hostTime + roundTrip / 2 - now)
+            const offset = message.hostTime + roundTrip / 2 - now
+            setClockOffset(offset)
+            // The ping is the one continuous proof the link still carries
+            // traffic, so the panel shows it rather than the log.
+            setFacts({ rttMs: Math.round(roundTrip), clockOffsetMs: Math.round(offset) })
             break
           }
           case 'error':
+            logEvent(`Host refused: ${message.code} — ${message.message}`, 'bad')
             setProblem(message.message)
             if (message.code !== 'invalid') setStatus('error')
             break

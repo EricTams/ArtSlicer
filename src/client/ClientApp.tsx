@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 
+import { DebugPanel } from '../net/DebugPanel'
 import { createPeerClient } from '../net/peerClient'
 import type { ClientHandlers } from '../net/transport'
 import { isValidRoomCode, normalizeRoomCode } from '../shared/roomCode'
@@ -32,9 +33,15 @@ export function ClientApp() {
           {roomCode ? `"${roomCode}" is not a valid room code.` : 'No room code in that link.'}
         </p>
         <p className="muted">Scan the QR code on the host screen.</p>
+        <DebugPanel />
       </div>
     )
   }
 
-  return <PlayerFlow connect={connect} identity={identity} roomCode={roomCode} />
+  return (
+    <>
+      <PlayerFlow connect={connect} identity={identity} roomCode={roomCode} />
+      <DebugPanel />
+    </>
+  )
 }
