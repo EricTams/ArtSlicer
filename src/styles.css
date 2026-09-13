@@ -327,12 +327,20 @@ h3 {
   color: var(--text);
 }
 
+/* The editor runs edge to edge; the header and submit button keep their own
+   inset instead. Side padding here would cost the canvas twice over, since it
+   is square and takes the smaller of the two axes. */
 .build {
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 8px;
-  padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+  gap: 4px;
+  padding: max(2px, env(safe-area-inset-top)) 0 max(2px, env(safe-area-inset-bottom));
+}
+
+.build__head,
+.build > .btn {
+  margin-inline: 8px;
 }
 
 .build__head {
@@ -364,6 +372,8 @@ h3 {
 .build__editor .make {
   padding: 0;
   flex: 1;
+  /* Every gap here comes off the canvas, which is the point of the screen. */
+  gap: 4px;
 }
 
 /* ---------- voting ---------- */
@@ -629,8 +639,8 @@ h3 {
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 10px;
-  padding: 8px 10px max(10px, env(safe-area-inset-bottom));
+  gap: 4px;
+  padding: 2px 2px max(2px, env(safe-area-inset-bottom));
 }
 
 .make__canvas {
@@ -850,6 +860,11 @@ h3 {
   touch-action: pan-x;
   scrollbar-width: thin;
   padding-bottom: 2px;
+  /* Older iOS gives an overflow container no momentum without this, which on a
+     bin this long means flicking through it a tile at a time. */
+  -webkit-overflow-scrolling: touch;
+  /* A flick that runs off the end is the bin's business, not the page's. */
+  overscroll-behavior-x: contain;
 }
 
 .tray__item {
@@ -862,7 +877,18 @@ h3 {
   border-radius: 12px;
   background: var(--bg);
   cursor: grab;
-  touch-action: none;
+  /*
+   * Tiles are 76px with an 8px gap, so all but a sliver of the strip is tile:
+   * `touch-action: none` here meant a finger landing anywhere useful swallowed
+   * the pan and the bin would not scroll at all.
+   *
+   * `pan-x` splits the gesture by direction, which is exactly how the two
+   * readings differ anyway. Sideways is browsing, and the browser scrolls it.
+   * Upward is pulling a piece onto the picture above, which the browser will
+   * not pan, so the drag handler keeps it. A sideways flick that began on a
+   * tile raises pointercancel, which already drops the carry cleanly.
+   */
+  touch-action: pan-x;
 }
 
 .tray__item:disabled {
