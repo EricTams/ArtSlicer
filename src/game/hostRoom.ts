@@ -134,6 +134,23 @@ export function createHostRoom(handlers: HostRoomHandlers) {
       .sort((a, b) => b.votes - a.votes)
   }
 
+  /**
+   * The player this connection is authenticated as, or nothing — having first
+   * told it so. Silence here is how a client that has lost its seat goes on
+   * submitting into a room that is not listening, with no symptom anywhere
+   * near the cause.
+   */
+  function seatedPlayer(conn: ConnId): PlayerId | null {
+    const playerId = connToPlayer.get(conn)
+    if (playerId) return playerId
+    sendTo(conn, {
+      t: 'error',
+      code: 'not-seated',
+      message: 'You are not seated in this room.',
+    })
+    return null
+  }
+
   function handleMessage(conn: ConnId, message: ClientMessage): void {
     switch (message.t) {
       case 'hello': {
@@ -196,21 +213,21 @@ export function createHostRoom(handlers: HostRoomHandlers) {
       }
 
       case 'start': {
-        const playerId = connToPlayer.get(conn)
+        const playerId = seatedPlayer(conn)
         if (!playerId) return
         apply(conn, reduce(state, { type: 'START', playerId, now: Date.now() }))
         return
       }
 
       case 'restart': {
-        const playerId = connToPlayer.get(conn)
+        const playerId = seatedPlayer(conn)
         if (!playerId) return
         apply(conn, reduce(state, { type: 'RESTART', playerId }))
         return
       }
 
       case 'submit': {
-        const playerId = connToPlayer.get(conn)
+        const playerId = seatedPlayer(conn)
         if (!playerId) return
 
         // Clients are not trusted: clamp the scene and reject unknown piece
@@ -239,7 +256,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
       }
 
       case 'vote': {
-        const playerId = connToPlayer.get(conn)
+        const playerId = seatedPlayer(conn)
         if (!playerId) return
         apply(
           conn,

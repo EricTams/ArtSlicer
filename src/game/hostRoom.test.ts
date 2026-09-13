@@ -198,6 +198,71 @@ describe('host playing on its own device, with one phone', () => {
   })
 })
 
+describe('a message from a connection holding no seat', () => {
+  it('is answered rather than dropped, so the client can do something about it', () => {
+    const room = createHostRoom({
+      onStateChange: () => {},
+      onReady: () => {},
+      onFailure: () => {},
+    })
+
+    // Never said hello, so this connection is authenticated as nobody.
+    peer.handlers.onMessage('c1', { t: 'submit', scene: { pieces: [] } })
+
+    expect(peer.sent).toContainEqual(
+      expect.objectContaining({ t: 'error', code: 'not-seated' }),
+    )
+    expect(room.getState().submissions).toHaveLength(0)
+
+    room.destroy()
+  })
+
+  it('answers the host player too, whose art would otherwise vanish in silence', () => {
+    const room = createHostRoom({
+      onStateChange: () => {},
+      onReady: () => {},
+      onFailure: () => {},
+    })
+
+    const host = localPlayer(room, 'host')
+    host.submit()
+
+    expect(host.seen).toContainEqual(
+      expect.objectContaining({ t: 'error', code: 'not-seated' }),
+    )
+
+    room.destroy()
+  })
+
+  it('seats them again when they say hello, and takes the art', () => {
+    const room = createHostRoom({
+      onStateChange: () => {},
+      onReady: () => {},
+      onFailure: () => {},
+    })
+
+    const host = localPlayer(room, 'host')
+    const guest = phone('c1', 'guest')
+    host.hello()
+    guest.hello()
+    host.start()
+
+    // The seat is lost underneath the client, as a stale teardown would do.
+    peer.handlers.onDisconnect('c1')
+    guest.submit()
+    expect(room.getState().submissions).toHaveLength(0)
+
+    // Saying hello again is all it takes, and the round is whole.
+    guest.hello()
+    guest.submit()
+    host.submit()
+    expect(room.getState().submissions).toHaveLength(2)
+    expect(room.getState().phase).toBe('voting')
+
+    room.destroy()
+  })
+})
+
 describe('a phone on the wrong build', () => {
   it('is turned away rather than seated', () => {
     const room = createHostRoom({

@@ -82,7 +82,17 @@ export type HostMessage =
   | { t: 'error'; code: ErrorCode; message: string }
 
 export type ErrorCode =
-  'room-full' | 'protocol-mismatch' | 'bad-secret' | 'game-in-progress' | 'invalid'
+  | 'room-full'
+  | 'protocol-mismatch'
+  | 'bad-secret'
+  | 'game-in-progress'
+  /**
+   * This connection is not holding a seat, whatever the client believes.
+   * Sent instead of dropping the message, because a client convinced it is
+   * seated will go on sending into the void and nothing will ever say why.
+   */
+  | 'not-seated'
+  | 'invalid'
 
 export type RefusalKind =
   /** Asking again gets the same answer; the player has to do something. */
@@ -108,6 +118,9 @@ export function refusalKind(code: ErrorCode): RefusalKind {
       return 'terminal'
     case 'room-full':
     case 'game-in-progress':
+    // Whatever lost the seat, saying hello again is what gets it back, and
+    // the client already knows who it was.
+    case 'not-seated':
       return 'retry-later'
     case 'invalid':
       return 'action'

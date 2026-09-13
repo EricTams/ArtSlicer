@@ -176,6 +176,10 @@ export function useClientRoom(
             logEvent(`Host refused: ${message.code} — ${message.message}`, 'bad')
             setProblem(message.message)
             const kind = refusalKind(message.code)
+            // The one refusal that overrules what we think: the host is saying
+            // this connection holds no seat, so whatever we believed about
+            // being seated is out of date and asking again is the way back.
+            if (message.code === 'not-seated') seatedRef.current = false
             // Holding a seat means this answered the action we just took, not
             // our right to be here — `game-in-progress` replies both to a late
             // join and to a seated player pressing Start too late.
@@ -188,6 +192,9 @@ export function useClientRoom(
             // connection, say why, and let the timer below keep asking.
             waitingForSeatRef.current = true
             setStatus('ready')
+            // The timer will keep asking, but a round is on a clock and the
+            // first ask should not wait five seconds for it.
+            if (message.code === 'not-seated') sendHello()
             break
           }
         }
