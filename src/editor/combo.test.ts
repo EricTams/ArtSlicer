@@ -104,6 +104,35 @@ describe('adding a piece to a combo', () => {
     sameInk(corners(after.children[0]!, [after]), before)
   })
 
+  it.each(AWKWARD)('leaves a piece that has been sliced alone when the combo is %s', (_name, shape) => {
+    /*
+     * A pivot is part of where a node draws — nodeMatrix ends by shifting onto
+     * it — so the decomposition has already accounted for it and carrying the
+     * old one across applies it a second time. Slicing is what gives a piece a
+     * pivot, so this is any piece that has been cut.
+     */
+    const combo: Combo = { id: 'c', x: 0, y: 0, scale: 1, rotation: 0, z: 5, children: [], ...shape }
+    const joining = piece({
+      x: 140,
+      y: -55,
+      rotation: 0.8,
+      scale: 1.2,
+      pivot: { x: 62, y: -38 },
+      cuts: [{ nx: 1, ny: 0, d: 10 }],
+    })
+
+    const before = corners(joining)
+    const after = addToCombo(combo, joining)
+    sameInk(corners(after.children[0]!, [after]), before)
+  })
+
+  it('keeps a sliced piece’s cuts, which live in the sprite and do not move', () => {
+    const combo: Combo = { id: 'c', x: 20, y: 30, scale: 1.5, rotation: 0.4, z: 0, children: [] }
+    const cuts = [{ nx: 1, ny: 0, d: 10 }]
+    const joined = addToCombo(combo, piece({ pivot: { x: 5, y: 5 }, cuts }))
+    expect((joined.children[0] as Placed).cuts).toEqual(cuts)
+  })
+
   it('keeps earlier members put when another one joins', () => {
     const first = piece({ id: 'a', x: 20, y: 10, rotation: 0.3 })
     const second = piece({ id: 'b', x: -40, y: 60, scale: 1.4 })

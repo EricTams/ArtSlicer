@@ -68,10 +68,17 @@ export function rebase(node: SceneNode, parent: Transformed): SceneNode {
     ...(local.squash ? { squashes: [local.squash] } : {}),
   }
 
-  // A node keeps its own pivot, so anything the decomposition folded in has to
-  // come back out; otherwise the shift would be applied twice.
+  /*
+   * Every part of the old transform has to go, not just the parts replaced
+   * above. The decomposition describes the node's whole position and shape, so
+   * a leftover mirror, squeeze or pivot is applied on top of a transform that
+   * already accounts for it — and a pivot is exactly that, since nodeMatrix
+   * ends by shifting onto it. Cuts stay: they are in the sprite and the sprite
+   * has not moved within itself.
+   */
   if (!local.flipX) delete (rebased as { flipX?: boolean }).flipX
   if (!local.squash) delete (rebased as { squashes?: unknown }).squashes
+  delete (rebased as { pivot?: unknown }).pivot
   return rebased as SceneNode
 }
 
