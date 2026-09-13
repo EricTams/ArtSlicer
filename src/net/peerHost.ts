@@ -13,6 +13,7 @@ import {
   upsertPeer,
 } from './diagnostics'
 import { peerOptions } from './peerOptions'
+import { revivalFor, survivedSuspend } from './revival'
 import { type ClientMessage, type HostMessage, parseClientMessage } from '../shared/protocol'
 import type { ConnId, ConnectionFailure, HostTransport } from './transport'
 
@@ -51,6 +52,9 @@ export function createPeerHost(
   let destroyed = false
   let attempt = 0
   let resumeAttempt = 0
+  /** The code phones are pointed at, and so the one a resume has to reclaim. */
+  let activeCode: string | null = preferredCode ?? null
+  let wantedCode = preferredCode
 
   function claim(): void {
     if (destroyed) return
@@ -58,8 +62,9 @@ export function createPeerHost(
     attempt += 1
     // Keep asking for the saved code until it frees up; only then fall back to
     // a fresh one, because every phone in the room is pointed at the old code.
-    const resuming = Boolean(preferredCode) && resumeAttempt < RESUME_ATTEMPTS
-    const roomCode = resuming ? preferredCode! : generateRoomCode()
+    const resuming = Boolean(wantedCode) && resumeAttempt < RESUME_ATTEMPTS
+    const roomCode = resuming ? wantedCode! : generateRoomCode()
+    activeCode = roomCode
     const hostId = roomCodeToPeerId(roomCode)
     const current = new Peer(hostId, peerOptions())
     peer = current
@@ -155,7 +160,62 @@ export function createPeerHost(
     })
   }
 
+  /** Forget a connection and tell the game its seat emptied. */
+  function drop(id: ConnId): void {
+    const conn = connections.get(id)
+    connections.delete(id)
+    closePeer(id)
+    conn?.close()
+    logEvent(`Phone lost to the suspend (${short(id)}) — ${connections.size} left`, 'warn')
+    if (!destroyed) handlers.onDisconnect(id)
+  }
+
+  function reapDead(): void {
+    for (const [id, conn] of [...connections]) {
+      const pc = conn.peerConnection as RTCPeerConnection | undefined
+      if (!survivedSuspend(pc?.iceConnectionState)) drop(id)
+    }
+  }
+
+  /**
+   * A phone hosting the room is a phone that will be locked, or swapped away
+   * from to read the group chat. hostRoom already keeps the game clock honest
+   * across that — deadlines move out by the gap nobody could play. The
+   * connections had no such protection: they die in the background and nothing
+   * was putting them back, so the room stayed on screen with every phone
+   * quietly unable to reach it.
+   *
+   * The host cannot re-dial anyone — phones dial it, never the other way
+   * round — so its whole job here is to become reachable again and let each
+   * phone's own foreground reconnect do the rest.
+   */
+  function onVisible(): void {
+    if (document.visibilityState !== 'visible' || destroyed) return
+
+    const revival = revivalFor(peer)
+
+    if (revival === 'reclaim') {
+      logEvent('Back in the foreground with no peer — reclaiming the room', 'warn')
+      // Ask for the code already on screen and on every phone, not a new one.
+      for (const id of [...connections.keys()]) drop(id)
+      wantedCode = activeCode ?? undefined
+      resumeAttempt = 0
+      attempt = 0
+      claim()
+      return
+    }
+
+    if (revival === 'reconnect') {
+      logEvent('Back in the foreground with the broker down — reconnecting', 'warn')
+      setFacts({ broker: 'connecting' })
+      peer?.reconnect()
+    }
+
+    reapDead()
+  }
+
   claim()
+  document.addEventListener('visibilitychange', onVisible)
 
   return {
     send(id, message: HostMessage) {
@@ -179,6 +239,7 @@ export function createPeerHost(
     },
     destroy() {
       destroyed = true
+      document.removeEventListener('visibilitychange', onVisible)
       logEvent('Room closed')
       setFacts({ broker: 'closed' })
       for (const id of connections.keys()) closePeer(id)
