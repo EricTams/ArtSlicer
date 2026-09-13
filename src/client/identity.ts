@@ -19,10 +19,31 @@ export interface Identity {
   secret: string
   name: string
   avatarId: string
+  /**
+   * The room this name and avatar were last used in.
+   *
+   * What separates coming back from starting again. Arriving at the same room
+   * is a phone that locked or a tab that refreshed, and it should take its seat
+   * without being asked anything. Arriving at a different one is a new game,
+   * where whoever is holding the phone may not be who held it last.
+   */
+  lastRoom?: string
 }
 
 function randomId(): string {
   return randomUUID()
+}
+
+/**
+ * Whether this identity should take its seat without being asked anything.
+ *
+ * Only in the room it was last used in. That is a phone coming back from a
+ * locked screen or a refreshed tab, and stopping to ask would cost the player
+ * the seat, the score and the picture they were halfway through. Anywhere else
+ * is a new game, and a name worth confirming.
+ */
+export function shouldRejoinSilently(identity: Identity, roomCode: string): boolean {
+  return Boolean(identity.name) && identity.lastRoom === roomCode
 }
 
 /**
@@ -41,6 +62,9 @@ export function loadIdentity(): Identity {
           secret: parsed.secret,
           name: typeof parsed.name === 'string' ? parsed.name : '',
           avatarId: typeof parsed.avatarId === 'string' ? parsed.avatarId : '',
+          // Absent on an identity stored before rooms were remembered, which
+          // reads as "no room" and so offers the choice rather than assuming.
+          lastRoom: typeof parsed.lastRoom === 'string' ? parsed.lastRoom : undefined,
         }
       }
     }

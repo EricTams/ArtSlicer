@@ -10,7 +10,7 @@ import {
 } from '../shared/protocol'
 import type { Phase, PlayerId, PublicPlayer } from '../shared/gameState'
 import type { Scene } from '../shared/scene'
-import { type Identity, saveIdentity } from './identity'
+import { type Identity, saveIdentity, shouldRejoinSilently } from './identity'
 
 /**
  * Two independent things are in flight here, and collapsing them into one
@@ -62,7 +62,12 @@ const REJOIN_INTERVAL_MS = 5000
  * player hosting on this device (in-process loopback). `connect` must be
  * stable — a new identity would tear down and rebuild the connection.
  */
-export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoom {
+export function useClientRoom(
+  connect: ConnectFn,
+  identity: Identity,
+  /** Which room this is, to tell coming back from starting again. */
+  roomCode: string,
+): ClientRoom {
   const [status, setStatus] = useState<ClientStatus>('connecting')
   const [phase, setPhase] = useState<Phase>('lobby')
   const [roundIndex, setRoundIndex] = useState(0)
@@ -88,11 +93,17 @@ export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoo
   const seatedRef = useRef(false)
   /**
    * Held in a ref so a reconnect can re-send `hello` without user action.
-   * Seeded from storage so a player whose phone locked (or who refreshed)
-   * slides straight back into their seat instead of re-typing their name.
+   *
+   * Seeded from storage only for the room the stored name was last used in: a
+   * phone that locked mid-game slides straight back into its seat, while
+   * arriving at a different room leaves this empty so the player is asked
+   * first. Whoever is holding the phone at a new party may not be who held it
+   * at the last one.
    */
   const credentialsRef = useRef<{ name: string; avatarId: string } | null>(
-    identity.name ? { name: identity.name, avatarId: identity.avatarId } : null,
+    shouldRejoinSilently(identity, roomCode)
+      ? { name: identity.name, avatarId: identity.avatarId }
+      : null,
   )
 
   const sendHello = useCallback(() => {
@@ -212,10 +223,12 @@ export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoo
   const join = useCallback(
     (name: string, avatarId: string) => {
       credentialsRef.current = { name, avatarId }
-      saveIdentity({ ...identity, name, avatarId })
+      // Storing the room alongside the name is what lets the next connection
+      // tell a reconnect from a fresh game.
+      saveIdentity({ ...identity, name, avatarId, lastRoom: roomCode })
       sendHello()
     },
-    [identity, sendHello],
+    [identity, roomCode, sendHello],
   )
 
   const start = useCallback(() => transportRef.current?.send({ t: 'start' }), [])

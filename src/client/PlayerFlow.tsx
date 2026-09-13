@@ -7,7 +7,7 @@ import { MAX_NAME_LENGTH, MIN_PLAYERS_TO_START, sanitizeName } from '../shared/g
 import { BuildScreen } from './BuildScreen'
 import { ResultsScreen } from './ResultsScreen'
 import { VoteScreen } from './VoteScreen'
-import type { Identity } from './identity'
+import { type Identity, shouldRejoinSilently } from './identity'
 import { type ClientRoom, useClientRoom } from './useClientRoom'
 
 export function PlayerFlow({
@@ -20,10 +20,22 @@ export function PlayerFlow({
   /** Shown on the join form so a player can confirm they scanned the right code. */
   roomCode: string
 }) {
-  const room = useClientRoom(connect, identity)
+  const room = useClientRoom(connect, identity, roomCode)
   const [name, setName] = useState(identity.name)
   const [avatarId, setAvatarId] = useState(identity.avatarId || AVATARS[0]!.id)
   const [submitted, setSubmitted] = useState(false)
+
+  /*
+   * Someone who has played before, arriving somewhere they have not: offer
+   * them who they were rather than a blank form, but ask rather than assume.
+   * A phone gets handed around, and the person holding it at this party need
+   * not be the one who held it at the last.
+   *
+   * Returning to the same room never reaches this — the hook has already sent
+   * them back to their seat, which is the whole point of remembering.
+   */
+  const returning = Boolean(identity.name) && !shouldRejoinSilently(identity, roomCode)
+  const [choosing, setChoosing] = useState(!returning)
 
   const me = room.players.find((p) => p.id === room.you)
   const inLobby = Boolean(me)
@@ -42,6 +54,53 @@ export function PlayerFlow({
           <p className="error">{room.problem ?? 'Something went wrong.'}</p>
           <button className="btn" onClick={() => window.location.reload()}>
             Try again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!inLobby && !choosing) {
+    const previous = getAvatar(avatarId)
+    return (
+      <div className="screen screen--center">
+        <div className="stack" style={{ alignItems: 'center', width: '100%', maxWidth: 380 }}>
+          <h1 className="brand" style={{ fontSize: '2.5rem' }}>
+            Art<em>Slicer</em>
+          </h1>
+          <p className="muted">
+            Room <strong>{roomCode}</strong>
+          </p>
+
+          <span
+            className="playerchip__avatar playerchip__avatar--big"
+            style={{ background: previous.color }}
+          >
+            {previous.glyph}
+          </span>
+          <h2>{identity.name}</h2>
+          <p className="muted">You played as this last time.</p>
+
+          <div className="spacer" />
+
+          {room.problem && <p className="error">{room.problem}</p>}
+
+          <button
+            className="btn btn--wide"
+            disabled={room.status === 'connecting' || submitted}
+            onClick={() => {
+              setSubmitted(true)
+              room.join(sanitizeName(name), avatarId)
+            }}
+          >
+            {room.status === 'connecting'
+              ? 'Connecting…'
+              : submitted
+                ? 'Joining…'
+                : `Play as ${identity.name}`}
+          </button>
+          <button className="btn btn--ghost btn--wide" onClick={() => setChoosing(true)}>
+            Be someone else
           </button>
         </div>
       </div>
