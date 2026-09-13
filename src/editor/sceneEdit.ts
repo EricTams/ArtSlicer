@@ -16,7 +16,7 @@ import {
   type Tint,
   topZ,
 } from '../shared/scene'
-import { addToCombo, leafCount, localBox, makeCombo } from './combo'
+import { addToCombo, leafCount, localBox, makeCombo, withFreshIds } from './combo'
 import { clipPolygon, invertCut, polygonCentroid } from '../render/clip'
 import { apply, pieceMatrix } from '../render/transform'
 
@@ -299,8 +299,11 @@ export function splitPiece(
   const direction = normalize(separation ?? { x: cut.nx, y: cut.ny })
 
   const keep = nudged(recentre(piece, [...existing, cut]), direction, -nudge)
+  // The offcut is a copy, so everything in it needs an id of its own — a combo
+  // brings its children along and both halves would otherwise claim the same
+  // parts.
   const offcut = nudged(
-    { ...recentre(piece, [...existing, invertCut(cut)]), id: newId, z: piece.z + 1 },
+    { ...withFreshIds(recentre(piece, [...existing, invertCut(cut)]), newId), z: piece.z + 1 },
     direction,
     nudge,
   )

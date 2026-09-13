@@ -20,7 +20,7 @@ import {
   readTap,
   worldMatrix,
 } from './combo'
-import { addPiece, groupPieces, sceneLeafCount } from './sceneEdit'
+import { addPiece, groupPieces, sceneLeafCount, splitPiece } from './sceneEdit'
 
 function piece(over: Partial<Placed> = {}): Placed {
   return { id: 'p', pieceId: 'sock', x: 0, y: 0, scale: 1, rotation: 0, z: 0, ...over }
@@ -458,5 +458,70 @@ describe('reading a tap', () => {
 
   it('selects when what was held has since gone', () => {
     expect(readTap(scene(), 'vanished', 'b', 'fresh', true)).toEqual({ action: 'select', id: 'b' })
+  })
+})
+
+describe('slicing a combo', () => {
+  const sliceable = (): Scene => ({
+    pieces: [
+      makeCombo(
+        [
+          piece({ id: 'a', x: 480, y: 500 }),
+          makeCombo([piece({ id: 'b', x: 520, y: 480 }), piece({ id: 'c', x: 540, y: 520 })], 'inner'),
+        ],
+        'outer',
+      ),
+    ],
+  })
+
+  /** Every id anywhere in the picture, so duplicates show up wherever they are. */
+  function allIds(node: SceneNode): string[] {
+    return isCombo(node) ? [node.id, ...node.children.flatMap(allIds)] : [node.id]
+  }
+
+  it('gives the offcut its own ids, all the way down', () => {
+    const scene = splitPiece(sliceable(), 'outer', { nx: 1, ny: 0, d: 0 }, 'cut')
+    expect(scene.pieces).toHaveLength(2)
+
+    const ids = scene.pieces.flatMap(allIds)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('leaves the half that stayed with the ids it had', () => {
+    const scene = splitPiece(sliceable(), 'outer', { nx: 1, ny: 0, d: 0 }, 'cut')
+    const kept = scene.pieces.find((node) => node.id === 'outer')
+    expect(kept).toBeDefined()
+    expect(allIds(kept!).sort()).toEqual(['a', 'b', 'c', 'inner', 'outer'].sort())
+  })
+
+  it('shares no child objects between the halves, so editing one cannot reach the other', () => {
+    const scene = splitPiece(sliceable(), 'outer', { nx: 1, ny: 0, d: 0 }, 'cut')
+    const [first, second] = scene.pieces as [Combo, Combo]
+
+    const objects = new Set<unknown>()
+    const collect = (node: SceneNode): void => {
+      objects.add(node)
+      if (isCombo(node)) node.children.forEach(collect)
+    }
+    collect(first)
+
+    const shared = (node: SceneNode): boolean =>
+      objects.has(node) || (isCombo(node) && node.children.some(shared))
+    expect(shared(second)).toBe(false)
+  })
+
+  it('keeps everything that was inside, in both halves', () => {
+    const scene = splitPiece(sliceable(), 'outer', { nx: 1, ny: 0, d: 0 }, 'cut')
+    expect(scene.pieces.map(leafCount)).toEqual([3, 3])
+  })
+
+  it('refuses a slice that would take the picture past its limit', () => {
+    // A combo of this size cannot be doubled without going over.
+    const big = makeCombo(
+      Array.from({ length: MAX_PIECES - 2 }, (_, i) => piece({ id: `p${i}` })),
+      'big',
+    )
+    const scene: Scene = { pieces: [big] }
+    expect(splitPiece(scene, 'big', { nx: 1, ny: 0, d: 0 }, 'cut')).toBe(scene)
   })
 })

@@ -202,3 +202,25 @@ export function readTap(
     comboId: isCombo(into) ? selectedId : freshId,
   }
 }
+
+
+/**
+ * The same node again under fresh ids, all the way down.
+ *
+ * Slicing copies whatever it cuts, and a combo brings its contents along. Two
+ * halves holding children under one set of ids would be two different things
+ * claiming to be the same parts — fine while nothing looks a child up, and a
+ * trap the moment something does.
+ *
+ * Derived from the parent's id rather than minted, so the result is the same
+ * every time for a given slice: easier to test, and easier to read in a
+ * snapshot than a fistful of random ids.
+ */
+export function withFreshIds(node: SceneNode, id: string): SceneNode {
+  if (!isCombo(node)) return { ...node, id }
+  return {
+    ...node,
+    id,
+    children: node.children.map((child, index) => withFreshIds(child, `${id}-${index}`)),
+  }
+}
