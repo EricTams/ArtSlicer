@@ -7,7 +7,7 @@ import type { Scene } from './scene'
  * today's host; the host checks this and tells them to refresh rather than
  * failing in some confusing downstream way.
  */
-export const PROTOCOL_VERSION = 3
+export const PROTOCOL_VERSION = 4
 
 /**
  * Client -> Host. Every message is an *intent*, never a fact: the client asks
@@ -17,6 +17,14 @@ export type ClientMessage =
   | {
       t: 'hello'
       protocol: number
+      /**
+       * The commit this phone's bundle was built from.
+       *
+       * The protocol number only moves when somebody remembers to move it, so
+       * two builds that disagree about anything else shake hands happily and
+       * then behave differently. This is exact and moves by itself.
+       */
+      build: string
       playerId: PlayerId
       /** Proves this client owns the seat when reclaiming after a disconnect. */
       secret: string
@@ -131,6 +139,9 @@ export function parseClientMessage(data: unknown): ClientMessage | null {
       return {
         t: 'hello',
         protocol: msg['protocol'],
+        // Missing on a bundle old enough not to send it, which reads as a
+        // mismatch and gets the same answer as any other wrong build.
+        build: typeof msg['build'] === 'string' ? msg['build'] : '',
         playerId: msg['playerId'],
         secret: msg['secret'],
         name: msg['name'],

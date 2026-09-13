@@ -10,6 +10,7 @@ import {
 } from '../shared/protocol'
 import type { Phase, PlayerId, PublicPlayer } from '../shared/gameState'
 import type { Scene } from '../shared/scene'
+import { BUILD_SHA } from '../version'
 import { type Identity, saveIdentity, shouldRejoinSilently } from './identity'
 
 /**
@@ -112,6 +113,7 @@ export function useClientRoom(
     transportRef.current?.send({
       t: 'hello',
       protocol: PROTOCOL_VERSION,
+      build: BUILD_SHA,
       playerId: identity.playerId,
       secret: identity.secret,
       name: creds.name,

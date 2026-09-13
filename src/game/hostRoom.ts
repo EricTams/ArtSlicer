@@ -16,6 +16,7 @@ import {
 } from '../shared/protocol'
 import { type PlayerId, type RoomState, createRoom, publicPlayers } from '../shared/gameState'
 import { randomUUID } from '../shared/randomId'
+import { BUILD_SHA } from '../version'
 import { sanitizeScene } from '../shared/scene'
 import { loadRoom, saveRoom, touchRoom } from './persistence'
 import { ballotFor, canStart, reduce } from './reducer'
@@ -136,12 +137,21 @@ export function createHostRoom(handlers: HostRoomHandlers) {
   function handleMessage(conn: ConnId, message: ClientMessage): void {
     switch (message.t) {
       case 'hello': {
-        if (message.protocol !== PROTOCOL_VERSION) {
-          // Almost always a phone holding a stale cached bundle from Pages.
+        if (message.protocol !== PROTOCOL_VERSION || message.build !== BUILD_SHA) {
+          /*
+           * Almost always a phone holding a stale cached bundle from Pages —
+           * or a fresh one that arrived after a deploy the host has not picked
+           * up. Either way the two are not the same game, and letting them
+           * play anyway is how a room ends up disagreeing about what happened.
+           *
+           * Neither side is told it is the stale one, because either could be:
+           * a host open since before a deploy is the old one, and a phone that
+           * just loaded is the new one.
+           */
           sendTo(conn, {
             t: 'error',
             code: 'protocol-mismatch',
-            message: 'Your game is out of date. Close the tab and reopen the link.',
+            message: 'This room is running a different version. Reload the page and rejoin.',
           })
           return
         }
@@ -336,6 +346,11 @@ export function createHostRoom(handlers: HostRoomHandlers) {
           handleMessage(LOCAL_CONN, message)
         },
         destroy() {
+          // Only if this is still the live client. A replacement may already
+          // have attached and taken the seat, and tearing down then would drop
+          // the player who is sitting in it — the same reason the remote path
+          // checks whether another connection has taken the seat over.
+          if (localHandlers !== clientHandlers) return
           localHandlers = null
           const playerId = connToPlayer.get(LOCAL_CONN)
           connToPlayer.delete(LOCAL_CONN)
