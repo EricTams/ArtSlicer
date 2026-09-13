@@ -338,7 +338,10 @@ h3 {
   padding: max(2px, env(safe-area-inset-top)) 0 max(2px, env(safe-area-inset-bottom));
 }
 
-.build__head,
+/* Direct children only: the vote and results screens borrow .build__head but
+   keep their own padding, and would otherwise sit their header 8px further in
+   than everything under it. */
+.build > .build__head,
 .build > .btn {
   margin-inline: 8px;
 }
