@@ -11,8 +11,10 @@ import {
   squashMatrix,
   translation,
 } from '../render/transform2d'
+import { inkPoints, kept } from '../render/ink'
 import { getPiece } from '../render/pieces'
 import { apply as applyLinear, pieceMatrix } from '../render/transform'
+import type { Point } from '../render/clip'
 import type { Combo, Placed, SceneNode, Transformed } from '../shared/scene'
 import { isCombo } from '../shared/scene'
 
@@ -130,6 +132,53 @@ export function addToCombo(combo: Combo, node: SceneNode): Combo {
 }
 
 /**
+ * Where a node has art, in its own coordinates, whatever is under it.
+ *
+ * A combo asks its children and brings their answers up through their own
+ * transforms, so a combo of combos still reports one set of points in one
+ * frame. Cuts are applied on the way, at every level, because a slice higher
+ * up removes art below it just as surely.
+ */
+export function inkOf(node: SceneNode): Point[] {
+  const own = isCombo(node)
+    ? node.children.flatMap((child) => {
+        const matrix = nodeMatrix(child)
+        return inkOf(child).map((point) => apply(matrix, point.x, point.y))
+      })
+    : inkPoints(node.pieceId)
+
+  return node.cuts?.length ? own.filter((point) => kept(node.cuts, point)) : own
+}
+
+/**
+ * The box a node's art fills, in its own coordinates, or nothing when it has
+ * none left.
+ *
+ * Measured off the art rather than the sprite's rectangle. The rectangles are
+ * already trimmed to the art, so they are not loose — but a windsock's box is
+ * mostly streamers, and the middle of the box is not the middle of what anyone
+ * looking at it would call the windsock.
+ */
+export function inkBounds(
+  node: SceneNode,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  const points = inkOf(node)
+  if (points.length === 0) return null
+
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const point of points) {
+    minX = Math.min(minX, point.x)
+    minY = Math.min(minY, point.y)
+    maxX = Math.max(maxX, point.x)
+    maxY = Math.max(maxY, point.y)
+  }
+  return { minX, minY, maxX, maxY }
+}
+
+/**
  * The box a combo's children occupy, in the space they are stored in.
  *
  * Unlike localBox this is where they actually are rather than how far they
@@ -180,7 +229,9 @@ function contentBounds(
  * scene, exactly as it does when a slice recentres a piece.
  */
 export function recentreCombo(combo: Combo): Combo {
-  const bounds = contentBounds(combo)
+  // What the art fills, falling back to what the rectangles do when a combo
+  // has been cut down to nothing an eye could find.
+  const bounds = inkBounds(combo) ?? contentBounds(combo)
   if (!bounds) return combo
 
   const centre = {

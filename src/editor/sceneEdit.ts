@@ -16,7 +16,8 @@ import {
   type Tint,
   topZ,
 } from '../shared/scene'
-import { addToCombo, leafCount, localBox, makeCombo, withFreshIds } from './combo'
+import { addToCombo, inkOf, leafCount, localBox, makeCombo, withFreshIds } from './combo'
+import { kept } from '../render/ink'
 import { clipPolygon, invertCut, polygonCentroid } from '../render/clip'
 import { apply, pieceMatrix } from '../render/transform'
 
@@ -290,6 +291,17 @@ export function splitPiece(
   // Out of cuts, or no room for the second half: leave the piece whole rather
   // than half-applying the slice.
   if (existing.length >= MAX_CUTS_PER_PIECE) return scene
+
+  /*
+   * A cut that leaves art on only one side has not divided anything — it has
+   * passed by the piece, or through a gap in it. The other half would be a
+   * piece that draws nothing, holds one of the picture's places and cannot be
+   * found to get rid of. The rectangle around the art cannot tell: plenty of
+   * these pieces are mostly gaps, which is why this asks where the art is.
+   */
+  const ink = inkOf(piece)
+  const surviving = ink.filter((point) => kept([cut], point)).length
+  if (surviving === 0 || surviving === ink.length) return scene
   // Slicing a combo copies everything in it, so the cost is what it holds.
   if (sceneLeafCount(scene) + leafCount(piece) > MAX_PIECES) return scene
 

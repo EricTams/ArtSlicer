@@ -7,6 +7,19 @@ export interface PieceDef {
   src: string
   width: number
   height: number
+  /**
+   * Where the art's weight sits, in sprite-local coordinates. Not the middle
+   * of the box: a windsock is a cone and a lot of streamers, and the two are
+   * most of its height apart.
+   */
+  centroid: { x: number; y: number }
+  /**
+   * A 16x16 grid of where there is any art at all, one bit per cell, packed
+   * and base64'd. Coarse on purpose — it exists to answer whether a slice has
+   * divided the art or merely passed through the gaps in it, and the pieces
+   * that question matters for are the ones made mostly of gaps.
+   */
+  mask: string
 }
 
 export const PIECES: PieceDef[] = manifest

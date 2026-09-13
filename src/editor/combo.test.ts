@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { inkPoints } from '../render/ink'
 import { apply, multiply, squashMatrix } from '../render/transform2d'
 import {
   MAX_COMBO_DEPTH,
@@ -16,15 +17,20 @@ import {
   leafCount,
   leaves,
   makeCombo,
-  localBox,
   nodeMatrix,
   readTap,
   worldMatrix,
 } from './combo'
 import { addPiece, groupPieces, sceneLeafCount, splitPiece } from './sceneEdit'
 
+/**
+ * A real piece id throughout, not a made-up one. A sprite the manifest has
+ * never heard of has no size and no art, so anything measured off the artwork
+ * quietly measures nothing — which is how two bugs got past these tests
+ * already.
+ */
 function piece(over: Partial<Placed> = {}): Placed {
-  return { id: 'p', pieceId: 'sock', x: 0, y: 0, scale: 1, rotation: 0, z: 0, ...over }
+  return { id: 'p', pieceId: 'argyle-sock', x: 0, y: 0, scale: 1, rotation: 0, z: 0, ...over }
 }
 
 /**
@@ -539,7 +545,13 @@ describe('where a combo sits', () => {
   const real = (id: string, pieceId: string, x: number, y: number, over: Partial<Placed> = {}): Placed =>
     ({ id, pieceId, x, y, scale: 1, rotation: 0, z: 0, ...over })
 
-  /** The box everything inside a node actually fills, out in the scene. */
+  /**
+   * The box the art actually fills, out in the scene.
+   *
+   * Walks down to the sprites and uses where each of them has ink, which is a
+   * different route to the answer than the implementation takes — it measures
+   * in the combo's own frame — so the two agreeing means something.
+   */
   function worldBounds(node: SceneNode, parents: SceneNode[] = []) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     const walk = (current: SceneNode, chain: SceneNode[]): void => {
@@ -547,15 +559,9 @@ describe('where a combo sits', () => {
         current.children.forEach((child) => walk(child, [...chain, current]))
         return
       }
-      const box = localBox(current)
       const m = worldMatrix(current, chain)
-      for (const [cx, cy] of [
-        [-box.width / 2, -box.height / 2],
-        [box.width / 2, -box.height / 2],
-        [box.width / 2, box.height / 2],
-        [-box.width / 2, box.height / 2],
-      ] as Array<[number, number]>) {
-        const p = apply(m, cx, cy)
+      for (const point of inkPoints(current.pieceId)) {
+        const p = apply(m, point.x, point.y)
         minX = Math.min(minX, p.x); minY = Math.min(minY, p.y)
         maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y)
       }
@@ -621,5 +627,66 @@ describe('where a combo sits', () => {
       // Scaled by the same amount, and otherwise untouched: a spin, not a swing.
       expect(turned[i]! / 2.1).toBeCloseTo(distance, 6)
     })
+  })
+})
+
+describe('deciding whether a slice has cut anything', () => {
+  const SOCK = 'argyle-sock'
+  const one = (): Scene => ({
+    pieces: [{ id: 'a', pieceId: SOCK, x: 500, y: 500, scale: 1, rotation: 0, z: 0 }],
+  })
+
+  it('cuts when the line has art on both sides of it', () => {
+    const scene = splitPiece(one(), 'a', { nx: 0, ny: 1, d: 0 }, 'b')
+    expect(scene.pieces).toHaveLength(2)
+  })
+
+  it('refuses a line that passes by the piece entirely', () => {
+    // Everything is on the kept side, so the offcut would draw nothing at all.
+    const scene = one()
+    expect(splitPiece(scene, 'a', { nx: 0, ny: 1, d: 10_000 }, 'b')).toBe(scene)
+  })
+
+  it('refuses a line with the whole piece on the far side of it', () => {
+    const scene = one()
+    expect(splitPiece(scene, 'a', { nx: 0, ny: 1, d: -10_000 }, 'b')).toBe(scene)
+  })
+
+  it('refuses a second cut that would take nothing the first one left', () => {
+    // The top half survives the first cut; a line below it divides nothing.
+    const once = splitPiece(one(), 'a', { nx: 0, ny: 1, d: 0 }, 'b')
+    const top = once.pieces.find((node) => node.id === 'a')!
+    expect(top.cuts).toHaveLength(1)
+    expect(splitPiece(once, 'a', { nx: 0, ny: 1, d: 500 }, 'c')).toBe(once)
+  })
+
+  it('still cuts a combo when the line divides what is in it', () => {
+    const scene: Scene = {
+      pieces: [
+        makeCombo(
+          [
+            { id: 'a', pieceId: SOCK, x: 300, y: 500, scale: 1, rotation: 0, z: 0 },
+            { id: 'b', pieceId: SOCK, x: 700, y: 500, scale: 1, rotation: 0, z: 1 },
+          ],
+          'c',
+        ),
+      ],
+    }
+    expect(splitPiece(scene, 'c', { nx: 1, ny: 0, d: 0 }, 'cut').pieces).toHaveLength(2)
+  })
+
+  it('refuses a line that misses a combo, rather than copying it', () => {
+    const scene: Scene = {
+      pieces: [
+        makeCombo(
+          [
+            { id: 'a', pieceId: SOCK, x: 300, y: 500, scale: 1, rotation: 0, z: 0 },
+            { id: 'b', pieceId: SOCK, x: 700, y: 500, scale: 1, rotation: 0, z: 1 },
+          ],
+          'c',
+        ),
+      ],
+    }
+    expect(splitPiece(scene, 'c', { nx: 1, ny: 0, d: 5_000 }, 'cut')).toBe(scene)
   })
 })
