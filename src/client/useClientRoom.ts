@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { logEvent, setFacts } from '../net/diagnostics'
 import { type ClientTransport, type ConnectFn, describeFailure } from '../net/transport'
-import { type BallotEntry, PROTOCOL_VERSION, type RevealedEntry } from '../shared/protocol'
+import {
+  type BallotEntry,
+  PROTOCOL_VERSION,
+  type RevealedEntry,
+  refusalKind,
+} from '../shared/protocol'
 import type { Phase, PlayerId, PublicPlayer } from '../shared/gameState'
 import type { Scene } from '../shared/scene'
 import { type Identity, saveIdentity } from './identity'
@@ -45,6 +50,13 @@ export interface ClientRoom {
 const PING_INTERVAL_MS = 3000
 
 /**
+ * How often to ask again after the host turned us away for a reason that will
+ * not last. Slow enough to be free, fast enough that a seat freeing up or a
+ * round ending lets the player in while they are still looking at the screen.
+ */
+const REJOIN_INTERVAL_MS = 5000
+
+/**
  * Drives one player's view of the room. Takes a `connect` function rather than
  * a room code so the same hook serves both a remote phone (WebRTC) and the
  * player hosting on this device (in-process loopback). `connect` must be
@@ -70,6 +82,10 @@ export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoo
   const [clockOffset, setClockOffset] = useState(0)
 
   const transportRef = useRef<ClientTransport | null>(null)
+  /** Refused for a reason that may pass, so keep asking for a seat. */
+  const waitingForSeatRef = useRef(false)
+  /** Whether the host has actually seated us, which changes what a refusal means. */
+  const seatedRef = useRef(false)
   /**
    * Held in a ref so a reconnect can re-send `hello` without user action.
    * Seeded from storage so a player whose phone locked (or who refreshed)
@@ -97,6 +113,8 @@ export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoo
     const transport = connect({
       onOpen() {
         setProblem(null)
+        // A new channel holds no seat until the host says otherwise.
+        seatedRef.current = false
         if (credentialsRef.current) {
           sendHello()
         } else {
@@ -107,6 +125,8 @@ export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoo
         switch (message.t) {
           case 'welcome':
             logEvent(`Seated as ${message.you}`, 'good')
+            seatedRef.current = true
+            waitingForSeatRef.current = false
             setYou(message.you)
             setStatus('joined')
             setProblem(null)
@@ -139,11 +159,24 @@ export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoo
             setFacts({ rttMs: Math.round(roundTrip), clockOffsetMs: Math.round(offset) })
             break
           }
-          case 'error':
+          case 'error': {
             logEvent(`Host refused: ${message.code} — ${message.message}`, 'bad')
             setProblem(message.message)
-            if (message.code !== 'invalid') setStatus('error')
+            const kind = refusalKind(message.code)
+            // Holding a seat means this answered the action we just took, not
+            // our right to be here — `game-in-progress` replies both to a late
+            // join and to a seated player pressing Start too late.
+            if (seatedRef.current || kind === 'action') break
+            if (kind === 'terminal') {
+              setStatus('error')
+              break
+            }
+            // The room is full or already playing: both pass. Hold the
+            // connection, say why, and let the timer below keep asking.
+            waitingForSeatRef.current = true
+            setStatus('ready')
             break
+          }
         }
       },
       onReconnecting() {
@@ -162,8 +195,15 @@ export function useClientRoom(connect: ConnectFn, identity: Identity): ClientRoo
       transport.send({ t: 'ping', clientTime: Date.now() })
     }, PING_INTERVAL_MS)
 
+    const rejoinTimer = setInterval(() => {
+      if (!waitingForSeatRef.current) return
+      logEvent('Asking for a seat again')
+      sendHello()
+    }, REJOIN_INTERVAL_MS)
+
     return () => {
       clearInterval(pingTimer)
+      clearInterval(rejoinTimer)
       transport.destroy()
       transportRef.current = null
     }

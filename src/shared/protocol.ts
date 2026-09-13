@@ -76,6 +76,36 @@ export type HostMessage =
 export type ErrorCode =
   'room-full' | 'protocol-mismatch' | 'bad-secret' | 'game-in-progress' | 'invalid'
 
+export type RefusalKind =
+  /** Asking again gets the same answer; the player has to do something. */
+  | 'terminal'
+  /** True of the room right now, not of this player. Worth asking again. */
+  | 'retry-later'
+  /** One action was rejected. The seat, if there is one, is unaffected. */
+  | 'action'
+
+/**
+ * How to treat a refusal from the host.
+ *
+ * `room-full` and `game-in-progress` describe the state of the room rather
+ * than anything about the player: a seat frees when somebody drops, and a
+ * game that has started will finish. `bad-secret` and `protocol-mismatch`
+ * describe this client, and asking again with the same secret — or the same
+ * stale bundle — gets the same answer every time.
+ */
+export function refusalKind(code: ErrorCode): RefusalKind {
+  switch (code) {
+    case 'protocol-mismatch':
+    case 'bad-secret':
+      return 'terminal'
+    case 'room-full':
+    case 'game-in-progress':
+      return 'retry-later'
+    case 'invalid':
+      return 'action'
+  }
+}
+
 /**
  * DataChannel payloads are untyped at runtime, so validate the shape of
  * anything arriving over the wire before the game logic touches it. Scenes are
