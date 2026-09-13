@@ -16,6 +16,7 @@ import {
   leafCount,
   leaves,
   makeCombo,
+  localBox,
   nodeMatrix,
   readTap,
   worldMatrix,
@@ -523,5 +524,102 @@ describe('slicing a combo', () => {
     )
     const scene: Scene = { pieces: [big] }
     expect(splitPiece(scene, 'big', { nx: 1, ny: 0, d: 0 }, 'cut')).toBe(scene)
+  })
+})
+
+describe('where a combo sits', () => {
+  /*
+   * Real piece ids, so the sprites have real sizes. With made-up ones every
+   * box is zero and a combo's middle is the middle of its children's origins,
+   * which is not the thing being checked here.
+   */
+  const SOCK = 'argyle-sock'
+  const BAUBLE = 'bauble'
+
+  const real = (id: string, pieceId: string, x: number, y: number, over: Partial<Placed> = {}): Placed =>
+    ({ id, pieceId, x, y, scale: 1, rotation: 0, z: 0, ...over })
+
+  /** The box everything inside a node actually fills, out in the scene. */
+  function worldBounds(node: SceneNode, parents: SceneNode[] = []) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    const walk = (current: SceneNode, chain: SceneNode[]): void => {
+      if (isCombo(current)) {
+        current.children.forEach((child) => walk(child, [...chain, current]))
+        return
+      }
+      const box = localBox(current)
+      const m = worldMatrix(current, chain)
+      for (const [cx, cy] of [
+        [-box.width / 2, -box.height / 2],
+        [box.width / 2, -box.height / 2],
+        [box.width / 2, box.height / 2],
+        [-box.width / 2, box.height / 2],
+      ] as Array<[number, number]>) {
+        const p = apply(m, cx, cy)
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y)
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y)
+      }
+    }
+    walk(node, parents)
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }
+  }
+
+  it('sits in the middle of two pieces of different sizes', () => {
+    // A narrow sock and a wide bauble: the middle is not halfway between their
+    // origins, which is what makes this worth asserting.
+    const combo = makeCombo([real('a', SOCK, 200, 300), real('b', BAUBLE, 600, 300)], 'c')
+    const centre = worldBounds(combo)
+
+    expect(combo.x).toBeCloseTo(centre.x, 6)
+    expect(combo.y).toBeCloseTo(centre.y, 6)
+  })
+
+  it('moves to the new middle when a third piece joins', () => {
+    const combo = makeCombo([real('a', SOCK, 200, 300), real('b', BAUBLE, 400, 300)], 'c')
+    const grown = addToCombo(combo, real('d', BAUBLE, 900, 700))
+
+    const centre = worldBounds(grown)
+    expect(grown.x).toBeCloseTo(centre.x, 6)
+    expect(grown.y).toBeCloseTo(centre.y, 6)
+    // And it really did move, or this proves nothing.
+    expect(Math.hypot(grown.x - combo.x, grown.y - combo.y)).toBeGreaterThan(50)
+  })
+
+  it('still moves nothing while recentring itself', () => {
+    const joining = real('d', BAUBLE, 900, 700, { rotation: 0.7, scale: 1.3 })
+    const combo = makeCombo([real('a', SOCK, 200, 300), real('b', BAUBLE, 400, 300)], 'c')
+
+    const before = corners(joining)
+    const grown = addToCombo(combo, joining)
+    sameInk(corners(grown.children[grown.children.length - 1]!, [grown]), before)
+  })
+
+  it('turns about its own middle rather than swinging around a corner', () => {
+    /*
+     * The point of recentring. Comparing against the box the combo fills out
+     * in the scene would be wrong for a turned one — that box changes shape as
+     * it turns, so an origin defined that way would slide every time the
+     * player rotated it. What has to hold is that the origin is fixed within
+     * the artwork: turning moves everything around it and nothing towards or
+     * away from it.
+     */
+    const combo = addToCombo(
+      makeCombo([real('a', SOCK, 200, 300), real('b', BAUBLE, 500, 300)], 'c'),
+      real('d', BAUBLE, 800, 200),
+    )
+
+    const spans = (node: Combo): number[] =>
+      node.children.map((child) => {
+        const p = apply(worldMatrix(child, [node]), 0, 0)
+        return Math.hypot(p.x - node.x, p.y - node.y)
+      })
+
+    const before = spans(combo)
+    const turned = spans({ ...combo, rotation: 1.2, scale: 2.1 })
+
+    before.forEach((distance, i) => {
+      // Scaled by the same amount, and otherwise untouched: a spin, not a swing.
+      expect(turned[i]! / 2.1).toBeCloseTo(distance, 6)
+    })
   })
 })

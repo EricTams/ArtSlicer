@@ -12,6 +12,7 @@ import {
   translation,
 } from '../render/transform2d'
 import { getPiece } from '../render/pieces'
+import { apply as applyLinear, pieceMatrix } from '../render/transform'
 import type { Combo, Placed, SceneNode, Transformed } from '../shared/scene'
 import { isCombo } from '../shared/scene'
 
@@ -120,12 +121,79 @@ export function makeCombo(members: readonly SceneNode[], id: string): Combo {
     z: Math.max(...members.map((member) => member.z)),
     children: [],
   }
-  return { ...shell, children: members.map((member) => rebase(member, shell)) }
+  return recentreCombo({ ...shell, children: members.map((member) => rebase(member, shell)) })
 }
 
 /** Adds one more node to an existing combo, without it appearing to move. */
 export function addToCombo(combo: Combo, node: SceneNode): Combo {
-  return { ...combo, children: [...combo.children, rebase(node, combo)] }
+  return recentreCombo({ ...combo, children: [...combo.children, rebase(node, combo)] })
+}
+
+/**
+ * The box a combo's children occupy, in the space they are stored in.
+ *
+ * Unlike localBox this is where they actually are rather than how far they
+ * reach from the origin, which is the difference between knowing a combo's
+ * size and knowing its middle.
+ */
+function contentBounds(
+  combo: Combo,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+
+  for (const child of combo.children) {
+    const box = localBox(child)
+    const matrix = nodeMatrix(child)
+    const corners: Array<[number, number]> = [
+      [-box.width / 2, -box.height / 2],
+      [box.width / 2, -box.height / 2],
+      [box.width / 2, box.height / 2],
+      [-box.width / 2, box.height / 2],
+    ]
+    for (const [cx, cy] of corners) {
+      const point = apply(matrix, cx, cy)
+      minX = Math.min(minX, point.x)
+      minY = Math.min(minY, point.y)
+      maxX = Math.max(maxX, point.x)
+      maxY = Math.max(maxY, point.y)
+    }
+  }
+
+  return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null
+}
+
+/**
+ * Moves a combo's origin to the middle of what it holds, without the artwork
+ * moving a pixel.
+ *
+ * The origin is where the combo turns and grows from, where its ring is drawn
+ * and where its handle hangs off. Adding a part extends the combo on one side,
+ * so an origin left where it was is no longer the middle of anything — the
+ * ring sits off to one side and turning the combo swings it rather than
+ * spinning it.
+ *
+ * Shifting the origin would slide the artwork, so it is cancelled out: the
+ * offset travels through the combo's own turn, size and squeezes to reach the
+ * scene, exactly as it does when a slice recentres a piece.
+ */
+export function recentreCombo(combo: Combo): Combo {
+  const bounds = contentBounds(combo)
+  if (!bounds) return combo
+
+  const centre = {
+    x: (bounds.minX + bounds.maxX) / 2,
+    y: (bounds.minY + bounds.maxY) / 2,
+  }
+  const previous = combo.pivot ?? { x: 0, y: 0 }
+  const shift = applyLinear(pieceMatrix(combo), {
+    x: centre.x - previous.x,
+    y: centre.y - previous.y,
+  })
+
+  return { ...combo, pivot: centre, x: combo.x + shift.x, y: combo.y + shift.y }
 }
 
 /**
