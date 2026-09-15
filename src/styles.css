@@ -1705,3 +1705,43 @@ h3 {
 .scan__close {
   max-width: 420px;
 }
+
+/* ---------- a game still going ---------- */
+
+/*
+ * Sits above "start a game", because it is the sentence that explains what
+ * that button is about to do.
+ */
+.home__interrupted {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+
+.home__interrupted-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.home__interrupted-note strong {
+  color: var(--text);
+  letter-spacing: 0.08em;
+}
+
+/* Quieter than the buttons it sits between: getting rid of a game is not what
+   anyone came here to do. */
+.home__abandon {
+  font-size: 0.95rem;
+  padding: 10px 16px;
+}
+
+/* Armed: the next tap ends a game, so it stops being quiet. */
+.home__abandon--armed {
+  border-color: var(--accent);
+  color: var(--accent);
+}
