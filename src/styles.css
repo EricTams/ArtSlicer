@@ -692,8 +692,8 @@ h3 {
    width, so the canvas above it still cannot resize mid-gesture. */
 .make__tools {
   display: grid;
-  /* 92px puts three across any phone — six controls in two full rows — and all
-     six on one row once there is room for them. */
+  /* 92px puts three across any phone — seven controls in three rows — and all
+     of them on one row once there is room for them. */
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 8px;
 }

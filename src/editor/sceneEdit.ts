@@ -16,7 +16,7 @@ import {
   type Tint,
   topZ,
 } from '../shared/scene'
-import { addToCombo, inkOf, leafCount, localBox, makeCombo, withFreshIds } from './combo'
+import { addToCombo, inkOf, leafCount, localBox, makeCombo, reachOf, withFreshIds } from './combo'
 import { kept } from '../render/ink'
 import { clipPolygon, invertCut, polygonCentroid } from '../render/clip'
 import { apply, pieceMatrix } from '../render/transform'
@@ -321,6 +321,51 @@ export function splitPiece(
   )
 
   return { ...scene, pieces: [...scene.pieces.map((p) => (p.id === id ? keep : p)), offcut] }
+}
+
+/**
+ * How far a copy sits from what it was copied from, as a fraction of how far
+ * that node reaches from its own origin.
+ *
+ * Measured off the node rather than fixed, because the same gap that plainly
+ * separates a bead is invisible beside a combo the size of the picture. Enough
+ * that the copy reads as a second thing, little enough that it reads as the
+ * same thing again, beside it.
+ */
+const COPY_OFFSET = 0.3
+
+/** Whether the picture has room for another of what `id` holds. */
+export function canCopy(scene: Scene, id: string): boolean {
+  const node = find(scene, id)
+  if (!node) return false
+  // A combo costs what it holds, so a picture two places from full cannot
+  // take a copy of a three-part combo.
+  return sceneLeafCount(scene) + leafCount(node) <= MAX_PIECES
+}
+
+/**
+ * The same thing again: every turn, squeeze, cut and coat of paint, offset a
+ * little and laid on top.
+ *
+ * The copy is a copy all the way down — a combo's children are copied with it
+ * under ids of their own, exactly as the offcut of a slice is, because two
+ * nodes claiming the same children is a trap for anything that looks one up.
+ */
+export function copyPiece(scene: Scene, id: string, newId: string): Scene {
+  const node = find(scene, id)
+  if (!node || !canCopy(scene, id)) return scene
+
+  // Down and to the right: a copy landing exactly on the original looks like
+  // the button did nothing at all.
+  const step = reachOf(node) * node.scale * COPY_OFFSET * Math.SQRT1_2
+  const copy: SceneNode = {
+    ...withFreshIds(node, newId),
+    x: node.x + step,
+    y: node.y + step,
+    z: topZ(scene) + 1,
+  }
+
+  return { ...scene, pieces: [...scene.pieces, copy] }
 }
 
 export function setBackground(scene: Scene, color: string): Scene {

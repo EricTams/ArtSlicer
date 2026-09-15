@@ -15,8 +15,10 @@ import {
   type History,
   addPiece,
   addSquash,
+  canCopy,
   canRestack,
   canUndo,
+  copyPiece,
   flipPiece,
   groupPieces,
   movePiece,
@@ -272,6 +274,19 @@ export function Editor({ initialScene, prompt, onChange, action }: Props) {
               onClick={() => selected && commit(flipPiece(scene, selected.id, 'y'))}
             />
           </PairTool>
+          {/* Acts at once, like the pairs: the copy lands beside the original
+              and is what's in hand, so it can be dragged straight off. */}
+          <ToolButton
+            glyph="⧉"
+            label="Copy"
+            disabled={!selected || !canCopy(scene, selected.id)}
+            onClick={() => {
+              if (!selected) return
+              const id = randomUUID().slice(0, 8)
+              commit(copyPiece(sceneRef.current, selected.id, id))
+              setSelectedId(id)
+            }}
+          />
           {/* Two taps by nature: this one arms, and the next piece touched is
               what joins. Armed, it says so, because nothing else on screen
               would explain why the next tap behaves differently. */}

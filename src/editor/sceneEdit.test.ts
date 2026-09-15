@@ -14,17 +14,21 @@ import {
   emptyScene,
   isCombo,
 } from '../shared/scene'
+import { leafCount, leaves } from './combo'
 import {
   type History,
   MAX_HISTORY,
   addPiece,
   addSquash,
   bringToFront,
+  canCopy,
   canRestack,
   canUndo,
   clearSquashes,
   clearTint,
+  copyPiece,
   flipPiece,
+  groupPieces,
   pushHistory,
   removePiece,
   restackPiece,
@@ -405,6 +409,92 @@ describe('flipping', () => {
     const scene = flipPiece(withPiece(), 'a', 'x')
     expect(scene.pieces[0]!.flipX).toBe(true)
     expect(scene.pieces[0]!.rotation).toBeCloseTo(0)
+  })
+})
+
+describe('copying', () => {
+  it('lays a second one down and leaves the first alone', () => {
+    const before = withPiece()
+    const scene = copyPiece(before, 'a', 'b')
+
+    expect(scene.pieces).toHaveLength(2)
+    expect(scene.pieces[0]).toBe(before.pieces[0])
+    expect(scene.pieces[1]!.id).toBe('b')
+  })
+
+  it('carries the colour, squashes, cuts and angle onto the copy', () => {
+    let scene = sprayPiece(withPiece(), 'a', '#ff0000', 0.5)
+    scene = addSquash(scene, 'a', SQUASH)
+    scene = transformPiece(scene, 'a', 1.5, 0.8)
+    scene = updatePiece(scene, 'a', { cuts: [CUT], flipX: true })
+    scene = copyPiece(scene, 'a', 'b')
+
+    const copy = sprite(scene.pieces[1]!)
+    expect(copy.tint).toEqual(sprite(scene.pieces[0]!).tint)
+    expect(copy.squashes).toEqual([SQUASH])
+    expect(copy.cuts).toEqual([CUT])
+    expect(copy.rotation).toBe(0.8)
+    expect(copy.scale).toBe(1.5)
+    expect(copy.flipX).toBe(true)
+  })
+
+  it('offsets the copy so it is not hidden under the original', () => {
+    const scene = copyPiece(withPiece(), 'a', 'b')
+    const [original, copy] = scene.pieces
+
+    expect(Math.hypot(copy!.x - original!.x, copy!.y - original!.y)).toBeGreaterThan(0)
+    // On top, like anything newly added, so it can be dragged straight off.
+    expect(copy!.z).toBeGreaterThan(original!.z)
+  })
+
+  it('spaces the copy by how big the thing is, not by a fixed gap', () => {
+    const gapAt = (scale: number): number => {
+      const scene = copyPiece(transformPiece(withPiece(), 'a', scale, 0), 'a', 'b')
+      const [original, copy] = scene.pieces
+      return Math.hypot(copy!.x - original!.x, copy!.y - original!.y)
+    }
+
+    expect(gapAt(2)).toBeCloseTo(gapAt(1) * 2, 5)
+  })
+
+  it('copies a combo’s contents under ids of their own', () => {
+    let scene = addPiece(withPiece('a'), 'toaster', 'b')
+    scene = groupPieces(scene, 'a', 'b', 'c')
+    scene = copyPiece(scene, 'c', 'd')
+
+    const [combo, copy] = scene.pieces
+    expect(leafCount(copy!)).toBe(2)
+    // Two things claiming the same parts is a trap for anything that looks a
+    // child up by id, so nothing inside may be shared.
+    const ids = new Set(leaves(combo!).map((leaf) => leaf.id))
+    expect(leaves(copy!).some((leaf) => ids.has(leaf.id))).toBe(false)
+  })
+
+  it('refuses when the picture is full', () => {
+    let scene = emptyScene()
+    for (let i = 0; i < MAX_PIECES; i++) scene = addPiece(scene, 'pom-pom', `p${i}`)
+
+    expect(canCopy(scene, 'p0')).toBe(false)
+    expect(copyPiece(scene, 'p0', 'extra')).toBe(scene)
+  })
+
+  it('refuses a combo the picture has fewer places left than it holds', () => {
+    let scene = addPiece(withPiece('a'), 'toaster', 'b')
+    scene = groupPieces(scene, 'a', 'b', 'c')
+    // Two in the combo plus singles, leaving room for exactly one more sprite.
+    for (let i = 0; i < MAX_PIECES - 3; i++) scene = addPiece(scene, 'pom-pom', `p${i}`)
+
+    expect(canCopy(scene, 'c')).toBe(false)
+    expect(copyPiece(scene, 'c', 'd')).toBe(scene)
+    // The single piece still fits, so it is the combo's size being counted and
+    // not the picture simply being full.
+    expect(canCopy(scene, 'p0')).toBe(true)
+  })
+
+  it('ignores a copy of something that is not there', () => {
+    const scene = withPiece()
+    expect(canCopy(scene, 'ghost')).toBe(false)
+    expect(copyPiece(scene, 'ghost', 'b')).toBe(scene)
   })
 })
 
