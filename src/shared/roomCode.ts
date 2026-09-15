@@ -43,3 +43,24 @@ export function joinUrl(code: string): string {
   const base = import.meta.env.BASE_URL.replace(/\/$/, '')
   return `${window.location.origin}${base}/#/join/${normalizeRoomCode(code)}`
 }
+
+/**
+ * The room code inside whatever a camera just read, or null if that was not
+ * one of ours.
+ *
+ * The host's QR holds a whole join link, but a phone scanning it from inside
+ * the app must not be sent to that link — following a URL is what hands the
+ * player to the browser, which is the thing scanning in-app exists to avoid.
+ * So only the code is taken out of it, and everything else about the link is
+ * discarded. That also means a code scanned off a laptop serving on the LAN
+ * joins fine from a phone running the deployed build: the code is what finds
+ * the room, not the address it was written at.
+ *
+ * Bare text is accepted as well, so a code someone has put in a QR by any
+ * other means still works.
+ */
+export function roomCodeFromScan(text: string): string | null {
+  const link = /#\/join\/([^/?#&\s]+)/.exec(text)
+  const code = normalizeRoomCode(link ? link[1]! : text)
+  return isValidRoomCode(code) ? code : null
+}
