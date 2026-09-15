@@ -1715,6 +1715,10 @@ h3 {
 .home__interrupted {
   display: grid;
   gap: 8px;
+  /* The home column centres its children, which would otherwise shrink this
+     to the width of its own sentence and leave it narrower than the buttons
+     it sits between. */
+  width: 100%;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { APP_VERSION, BUILD_SHA } from './version'
 
@@ -6,6 +6,7 @@ import { isValidRoomCode, normalizeRoomCode } from './shared/roomCode'
 import { ScanJoin } from './client/ScanJoin'
 import { cameraAvailable } from './client/qrScan'
 import { clearRoom, loadRoom } from './game/persistence'
+import { peekIdentity, rejoinableRoom } from './client/identity'
 import { useArming } from './shared/useArming'
 
 /**
@@ -25,6 +26,21 @@ export function Home() {
    * gone does nothing, and starting a game gets a fresh room either way.
    */
   const [interrupted, setInterrupted] = useState(() => loadRoom())
+  /*
+   * A room this phone was playing in. Closing the app and opening it again
+   * lands here rather than on the game, and the join link is a URL the player
+   * no longer has — so without this the way back is to find the host's QR code
+   * again, while the seat, the score and the half-built picture sit waiting.
+   *
+   * Not offered while this device has a game of its own to resume: that would
+   * be this host's own room, and dialling into it as a client only waits for a
+   * host that is not running. The notice above takes it back properly.
+   */
+  const rejoin = useMemo(() => {
+    if (interrupted) return null
+    const identity = peekIdentity()
+    return identity ? rejoinableRoom(identity) : null
+  }, [interrupted])
   const normalized = normalizeRoomCode(code)
 
   return (
@@ -36,6 +52,17 @@ export function Home() {
         <p className="tagline">
           Grab a pile of junk. Make it look like the prompt. Let everyone judge you.
         </p>
+
+        {rejoin && (
+          <div className="home__interrupted">
+            <p className="home__interrupted-note">
+              You were playing in room <strong>{rejoin}</strong>.
+            </p>
+            <button className="btn btn--wide" onClick={() => navigate(`/join/${rejoin}`)}>
+              Back to the game
+            </button>
+          </div>
+        )}
 
         {/* Starting a game picks an interrupted one back up, which is right
             after a refresh mid-round and wrong when the last one is simply
@@ -51,7 +78,13 @@ export function Home() {
           />
         )}
 
-        <button className="btn btn--wide" onClick={() => navigate('/host')}>
+        {/* Quieter while a game is being offered back, so there is one thing
+            to press: someone who just closed the app on a room they are in is
+            far likelier to be going back to it than starting another. */}
+        <button
+          className={`btn btn--wide${rejoin ? ' btn--ghost' : ''}`}
+          onClick={() => navigate('/host')}
+        >
           {interrupted ? 'Back to your game' : 'Start a game'}
         </button>
 

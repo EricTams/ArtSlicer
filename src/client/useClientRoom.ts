@@ -136,14 +136,28 @@ export function useClientRoom(
       },
       onMessage(message) {
         switch (message.t) {
-          case 'welcome':
+          case 'welcome': {
             logEvent(`Seated as ${message.you}`, 'good')
             seatedRef.current = true
             waitingForSeatRef.current = false
+            // Written on every seating rather than only on the first, so the
+            // front door offers the way back from when this phone was last
+            // actually in the room — not from when it first asked to be.
+            const creds = credentialsRef.current
+            if (creds) {
+              saveIdentity({
+                ...identity,
+                name: creds.name,
+                avatarId: creds.avatarId,
+                lastRoom: roomCode,
+                lastRoomAt: Date.now(),
+              })
+            }
             setYou(message.you)
             setStatus('joined')
             setProblem(null)
             break
+          }
           case 'state':
             setPhase(message.phase)
             setRoundIndex(message.roundIndex)
@@ -234,7 +248,7 @@ export function useClientRoom(
       credentialsRef.current = { name, avatarId }
       // Storing the room alongside the name is what lets the next connection
       // tell a reconnect from a fresh game.
-      saveIdentity({ ...identity, name, avatarId, lastRoom: roomCode })
+      saveIdentity({ ...identity, name, avatarId, lastRoom: roomCode, lastRoomAt: Date.now() })
       sendHello()
     },
     [identity, roomCode, sendHello],
