@@ -1,9 +1,9 @@
 import type { ClientMessage, HostMessage } from '../shared/protocol'
 
 /**
- * The seam between the game and WebRTC. Game code talks to these interfaces
- * only, so swapping PeerJS for a self-hosted broker (or Trystero) touches
- * nothing above this layer.
+ * The seam between the game and the network. Game code talks to these
+ * interfaces only, so whether the bytes go over a WebRTC DataChannel or
+ * through the WebSocket relay touches nothing above this layer.
  *
  * `ConnId` is the transport's own handle for a connection — distinct from
  * PlayerId, which the game assigns only after a valid `hello` arrives.
@@ -15,6 +15,15 @@ export interface HostTransport {
   broadcast(message: HostMessage): void
   disconnect(conn: ConnId): void
   destroy(): void
+}
+
+export interface HostHandlers {
+  /** The room code was claimed on the relay or broker and phones can now connect. */
+  onReady(roomCode: string): void
+  onConnect(conn: ConnId): void
+  onMessage(conn: ConnId, message: ClientMessage): void
+  onDisconnect(conn: ConnId): void
+  onFailure(failure: ConnectionFailure): void
 }
 
 export interface ClientTransport {

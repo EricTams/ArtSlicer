@@ -24,10 +24,9 @@ start again — handy for learning the tools before playing with other people.
 
 ## How it works
 
-GitHub Pages serves static files and nothing else — there is no server to run
-game logic or hold a WebSocket. So the **host device is the server**: phones
-connect straight to it over WebRTC, and it owns all game state and every
-deadline. That device can be a laptop acting as a shared screen, or simply the
+GitHub Pages serves static files and nothing else, so the **host device is the
+server**: it owns all game state and every deadline, and phones only send
+intents. That device can be a laptop acting as a shared screen, or simply the
 phone of the player who started the game.
 
 ```
@@ -41,13 +40,39 @@ phone of the player who started the game.
  • validates every message                   • never trusts itself
  • may also be playing                             │
       │                                            │
-      └────── WebRTC DataChannel (star topology) ──┘
-                            │
-                  PeerJS Cloud broker
-             (signalling only — no game data)
+      └──── wss:// ──► relay (Cloudflare) ◄── wss:// ┘
+                 one Durable Object per room code
+                 carries strings, reads none of them
 ```
 
-Clients connect only to the host, never to each other.
+Clients talk only to the host, never to each other.
+
+### Messages go through a relay
+
+Every phone and the host open a WebSocket to a small Cloudflare Worker
+(`relay/`), which keeps one Durable Object per room code and passes frames
+between the host and its phones. It never parses a game message; validation is
+still the host's job.
+
+This replaced WebRTC, which needed a STUN lookup, a signalling broker, and —
+for any phone on cellular or a guest network with client isolation — a TURN
+relay anyway. Game traffic is tiny (a drawing is a few hundred bytes), so
+relaying all of it costs nothing noticeable, and a `wss://` connection on 443
+gets through anywhere the page itself loaded.
+
+- **The room code is the address.** The host claims `/room/XYZ4` with a random
+  key it keeps in local storage; phones dial the same path. The same key
+  reclaims the room after a reload or a suspend, and anyone else who rolls the
+  code is refused, so the host re-rolls.
+- **Losing the host sends every phone round again.** The relay closes their
+  sockets, each phone retries with backoff, and its `hello` reseats it with the
+  host that came back — the same path as any other reconnect.
+- **Both ends heartbeat.** The relay answers pings without waking up, an alarm
+  closes sockets that went quiet, and a tab coming back from the background
+  probes its socket rather than trusting it.
+
+Builds without `VITE_RELAY_URL` fall back to the original WebRTC transport
+through the public PeerJS broker, which still works on a shared Wi-Fi.
 
 ### The host can play too
 
@@ -178,6 +203,21 @@ npm test
 npm run build
 ```
 
+To play through the relay locally, run it on the Workers runtime and point the
+app at it:
+
+```bash
+cd relay && npm install && npm run dev       # ws://localhost:8787, also on the LAN
+VITE_RELAY_URL=ws://localhost:8787 npm run dev
+```
+
+For a real phone on the same Wi-Fi, use the laptop's LAN address instead
+(`ws://192.168.x.y:8787`) — on the phone, `localhost` is the phone.
+
+Deploying the relay is `cd relay && npx wrangler deploy`; set the URL it prints
+(as `wss://…`) as the repository variable `RELAY_URL` and the Pages build picks
+it up.
+
 These query parameters make local playtesting possible without a pile of devices:
 
 | Parameter | Effect |
@@ -234,14 +274,10 @@ Two rules keep this maintainable:
 
 ## Known limits
 
-- **No TURN server.** WebRTC needs a relay when both peers sit behind restrictive
-  NATs. STUN alone covers same-Wi-Fi play and most home networks, which is the
-  normal case for a party game, but guest Wi-Fi with client isolation or a phone
-  on cellular can fail to connect. The app detects this and says so rather than
-  hanging. Adding TURN is the only part of this design that would cost money.
-- **The PeerJS cloud broker is shared and unmetered.** If it becomes unreliable,
-  `src/net/` is behind an interface: self-hosting `peerjs-server` is a few lines,
-  or [Trystero](https://trystero.dev/) can be swapped in.
+- **The relay is a Cloudflare Worker on the free plan.** Its limits (100k
+  requests a day, with WebSocket messages counted at 20:1) are far beyond a
+  party game, but it is a service someone has to keep deployed. The WebRTC
+  fallback has no relay of its own, so without one it fails on cellular.
 - **A host that switches apps stalls the room.** iOS suspends a backgrounded
   tab's JavaScript outright, and Android freezes it after a while; `RTCPeerConnection`
   is a window-only API, so the hosting cannot be moved to a Worker or Service

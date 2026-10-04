@@ -14,17 +14,8 @@ import {
 } from './diagnostics'
 import { peerOptions } from './peerOptions'
 import { revivalFor, survivedSuspend } from './revival'
-import { type ClientMessage, type HostMessage, parseClientMessage } from '../shared/protocol'
-import { type ConnId, type ConnectionFailure, type HostTransport, toFailure } from './transport'
-
-export interface HostHandlers {
-  /** The room code was claimed on the broker and phones can now connect. */
-  onReady(roomCode: string): void
-  onConnect(conn: ConnId): void
-  onMessage(conn: ConnId, message: ClientMessage): void
-  onDisconnect(conn: ConnId): void
-  onFailure(failure: ConnectionFailure): void
-}
+import { type HostMessage, parseClientMessage } from '../shared/protocol'
+import { type ConnId, type HostHandlers, type HostTransport, toFailure } from './transport'
 
 /** How many times to re-roll the room code when the broker says it's taken. */
 const MAX_CODE_ATTEMPTS = 5

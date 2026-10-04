@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "artslicer-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
+  },
+  // SQLite-backed, which is what the Workers free plan allows.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "vars": {
+    // Pages origins allowed to open a room. Local and LAN dev servers are
+    // always allowed, so a phone on the same Wi-Fi can test against this relay.
+    "ALLOWED_ORIGINS": "https://erictams.github.io"
+  }
+}

@@ -1,5 +1,5 @@
 import { upsertPeer } from '../net/diagnostics'
-import { createPeerHost } from '../net/peerHost'
+import { createHostTransport } from '../net/connect'
 import type {
   ClientHandlers,
   ClientTransport,
@@ -288,7 +288,7 @@ export function createHostRoom(handlers: HostRoomHandlers) {
     setState(result.state)
   }
 
-  transport = createPeerHost(
+  transport = createHostTransport(
     {
       onReady(roomCode) {
         state = { ...state, roomCode }

@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { DebugPanel } from '../net/DebugPanel'
-import { createPeerClient } from '../net/peerClient'
+import { createClientTransport } from '../net/connect'
 import type { ClientHandlers } from '../net/transport'
 import { isValidRoomCode, normalizeRoomCode } from '../shared/roomCode'
 import { PlayerFlow } from './PlayerFlow'
@@ -19,7 +19,7 @@ export function ClientApp() {
 
   // Stable, so the player UI does not tear down its connection on every render.
   const connect = useCallback(
-    (handlers: ClientHandlers) => createPeerClient(roomCode, handlers),
+    (handlers: ClientHandlers) => createClientTransport(roomCode, handlers),
     [roomCode],
   )
 

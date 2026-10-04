@@ -4,6 +4,7 @@ art-review/
 *.local
 .DS_Store
 .vite/
+.wrangler/
 
 # Local secrets: TURN credentials belong in the deploy, not the repo.
 .env
